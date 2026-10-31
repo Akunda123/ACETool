@@ -36,6 +36,8 @@ type Options struct {
 	OnOpen     func()
 	OnSettings func()
 	OnQuit     func()
+	// OnBalloonClick 是用户点托盘气泡时调用的（当前用于“打开新版本下载页”）。
+	OnBalloonClick func()
 }
 
 // Info 是给 `/api/tray` 与排障用的现场快照。
@@ -75,6 +77,8 @@ const (
 	wmLButtonUp = 0x0202
 	wmLDouble   = 0x0203
 	wmRButtonUp = 0x0205
+	// 托盘气泡回调（WM_APP+… 由 Shell 发给我们设的 CallbackMsg）
+	ninBalloonUserClick = 0x0405
 
 	menuOpen     = 3
 	menuSettings = 4
@@ -94,6 +98,8 @@ const (
 	nifMessage = 0x0001
 	nifIcon    = 0x0002
 	nifTip     = 0x0004
+	nifInfo    = 0x0010 // 允许带气泡正文
+	niifInfo   = 0x0001 // 气泡图标：信息
 )
 
 var (
@@ -393,6 +399,11 @@ func trayProc(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 		case wmRButtonUp:
 			t.menu()
 			return 0
+		case ninBalloonUserClick:
+			if f := t.opts.OnBalloonClick; f != nil {
+				go f()
+			}
+			return 0
 		}
 		return 0
 	case wmClose:
@@ -495,4 +506,25 @@ func isClassExists(err error) bool {
 		return e == 1410
 	}
 	return false
+}
+
+// Balloon 弹一条托盘气泡（Win10+ 会显示成系统通知）。同一版本只弹一次由调用方控制。
+func (t *Tray) Balloon(title, text string) {
+	t.mu.Lock()
+	hwnd, hicon, added := t.hwnd, t.hicon, t.added
+	t.mu.Unlock()
+	if hwnd == 0 || !added {
+		return
+	}
+	var nid notifyIconDataW
+	nid.Size = uint32(unsafe.Sizeof(nid))
+	nid.Wnd = hwnd
+	nid.ID = 1
+	nid.Flags = nifInfo | nifIcon
+	nid.Icon = hicon
+	copy(nid.InfoTitle[:], syscall.StringToUTF16(title))
+	copy(nid.Info[:], syscall.StringToUTF16(text))
+	nid.InfoFlags = niifInfo
+	nid.TimeoutOrVer = 10000
+	pShellNotifyIconW.Call(nimModify, uintptr(unsafe.Pointer(&nid)))
 }

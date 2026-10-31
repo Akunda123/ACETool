@@ -41,6 +41,9 @@ var theRail *rail.Rail
 // theTray 是系统托盘图标（退出时要 Stop；`/api/tray` 也要读它）。
 var theTray *tray.Tray
 
+// lastUpdateURL 是最近一次检测到的新版本下载页：点气泡时打开它。
+var lastUpdateURL string
+
 // appVersion 由 build.ps1 用 -ldflags -X main.appVersion=x.y.z 覆盖
 var appVersion = "1.1.0"
 
@@ -129,6 +132,7 @@ func main() {
 			if i.Error == "" {
 				if i.Newer {
 					log.Printf("有新版本：%s（当前 %s，来源 %s）", i.Latest, i.Current, i.Source)
+					notifyNewVersion(cfg, i)
 				} else {
 					log.Printf("更新检测：已是最新 %s（来源 %s）", i.Current, i.Source)
 				}
@@ -325,6 +329,13 @@ func startTray(url string) {
 		OnOpen:     trayActions.Open,
 		OnSettings: trayActions.Settings,
 		OnQuit:     trayActions.Quit,
+		OnBalloonClick: func() {
+			if lastUpdateURL != "" {
+				if err := web.Open(lastUpdateURL); err != nil {
+					log.Printf("打开更新页失败：%v", err)
+				}
+			}
+		},
 	})
 	if err != nil {
 		log.Printf("托盘图标没起来（面板照常用）：%v", err)
@@ -333,6 +344,33 @@ func startTray(url string) {
 	theTray = t
 	info := t.Info()
 	exitLog("托盘图标起来了：hwnd=0x%x 图标=%s added=%v", info.HWND, info.Icon, info.Added)
+}
+
+// notifyNewVersion 发现新版本时弹一条系统通知（同一版本只弹一次，进程内也去重）。
+func notifyNewVersion(cfg *config.Config, i *updateInfo) {
+	if i == nil || i.Latest == "" {
+		return
+	}
+	v := strings.TrimPrefix(i.Latest, "v")
+	if cfg != nil {
+		if strings.TrimPrefix(cfg.NotifiedVersion, "v") == v {
+			return
+		}
+	}
+	// 托盘可能还没起来（启动早于托盘），最多等 60 秒
+	for k := 0; k < 60 && theTray == nil; k++ {
+		time.Sleep(time.Second)
+	}
+	if theTray == nil {
+		return
+	}
+	lastUpdateURL = i.URL
+	theTray.Balloon("ACETool 有新版本 "+i.Latest,
+		"当前 "+i.Current+"，点托盘图标 → 关于页可查看/下载。")
+	if cfg != nil {
+		cfg.NotifiedVersion = v
+		_ = cfg.Save()
+	}
 }
 
 // openOrFocusPanel 托盘左键 / 菜单「打开面板」：**已经有面板窗口就切过去**，没有才新开一个。

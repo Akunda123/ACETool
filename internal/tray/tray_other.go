@@ -13,6 +13,7 @@ type Options struct {
 	OnOpen     func()
 	OnSettings func()
 	OnQuit     func()
+	OnBalloonClick func() // 点气泡时调用
 }
 
 // Info 见 windows 实现。
@@ -40,3 +41,6 @@ func (t *Tray) Update(tip string) { t.info.Tip = tip }
 func (t *Tray) Info() Info { return t.info }
 
 func (t *Tray) Stop() {}
+
+// Balloon 在非 Windows 平台是空操作（只为跨平台编译）。
+func (t *Tray) Balloon(title, text string) {}

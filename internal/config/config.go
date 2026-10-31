@@ -45,6 +45,8 @@ type Config struct {
 	// LayoutVersion 记录"内置顺序是第几版"：老配置里存过 layoutOrder 的，升级到新版会被清一次，
 	// 好让新的出厂顺序（按颜色分组）生效（用户 2026-10-21：「顺序没改」）。
 	LayoutVersion int `json:"layoutVersion,omitempty"`
+	// NotifiedVersion 记录"哪个新版本已经弹过托盘提示"：同一版本只提醒一次。
+	NotifiedVersion string `json:"notifiedVersion,omitempty"`
 }
 
 // ShortcutBinding 是一条快捷键绑定。键位存**规范形**（`Ctrl+Alt+Enter`，见 `hotkeys.Normalize`）。
