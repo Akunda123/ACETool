@@ -38,7 +38,7 @@ async function api(method, url, body, raw) {
 
 (async () => {
   const root = process.cwd();
-  const files = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split('\n').filter(Boolean);
+  const files = execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files'], { encoding: 'utf8' }).split('\n').filter(Boolean);
   console.log('文件数:', files.length);
 
   // 已有提交就取父提交；空仓库先用 Contents API 造一个初始提交（否则 blobs 会 409）
