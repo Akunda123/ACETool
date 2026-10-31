@@ -4,7 +4,7 @@ package tray
 
 // Windows **系统托盘（通知区域）图标**：`Shell_NotifyIcon` + 一个隐藏的顶层窗口。
 //
-// 用户 2026-10-17：「加个状态栏图标，图标使用 `SVAgent\electron\src\ace-mark-anim.svg`
+// 用户 2026-10-17：「加个状态栏图标，图标使用 `<skills-dir>\electron\src\ace-mark-anim.svg`
 // 这个 svg 里那个黑色的 a」。图标怎么来的见 `icon_windows.go` 顶部
 // （无头 Edge 光栅化 → 嵌入 PNG → HICON）。
 //

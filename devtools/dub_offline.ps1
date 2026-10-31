@@ -2,13 +2,13 @@
 # 反复被计划任务调用也没关系：有活的 python 合成进程就直接退出（不抢 GPU）。
 $ErrorActionPreference = 'Continue'
 
-$Root = 'C:\Users\wujichao\Documents\acetool-app'
+$Root = 'C:/Users/<user>\Documents\acetool-app'
 $Lines = Join-Path $Root 'docs\voice\lines'
 $Report = Join-Path $Root 'docs\voice\lines_report.json'
 $Log = Join-Path $Root 'docs\voice\dub_offline.log'
 $Target = 'F:\新建文件夹 (11)\Index-TTS-V26\Index-TTS-V26\dist\index-tts-windows-cu128-deepspeed'
 $Py = 'I:\runtime\python.exe'
-$SysPy = 'C:\Users\wujichao\AppData\Local\Programs\Python\Python310\python.exe'
+$SysPy = 'C:/Users/<user>\AppData\Local\Programs\Python\Python310\python.exe'
 
 function L($m) { "{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m | Out-File -Append -Encoding UTF8 $Log }
 

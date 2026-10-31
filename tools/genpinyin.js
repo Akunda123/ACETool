@@ -17,7 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_PP = 'C:/Users/wujichao/Documents/SVAgent/dist/server-runtime/node_modules/pinyin-pro';
+const DEFAULT_PP = 'C:/Users/<user>/Documents/<skills-dir>/dist/server-runtime/node_modules/pinyin-pro';
 const ppDir = process.argv[2] || DEFAULT_PP;
 const pp = require(ppDir);
 

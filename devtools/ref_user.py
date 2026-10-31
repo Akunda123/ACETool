@@ -2,8 +2,8 @@
 import numpy as np
 import soundfile as sf
 
-SRC = r'C:\Users\wujichao\Documents\Image-Line\FL Studio\Projects\123123132.wav'
-OUT = r'C:\Users\wujichao\Documents\acetool-app\docs\voice\ref_user_24k.wav'
+SRC = r'C:/Users/<user>\Documents\Image-Line\FL Studio\Projects\123123132.wav'
+OUT = r'C:/Users/<user>\Documents\acetool-app\docs\voice\ref_user_24k.wav'
 SR = 24000
 
 x, sr = sf.read(SRC, dtype='float32')

@@ -8,7 +8,7 @@ import re
 import numpy as np
 import soundfile as sf
 
-ROOT = r'C:\Users\wujichao\Documents\acetool-app'
+ROOT = r'C:/Users/<user>\Documents\acetool-app'
 VER = 'v1.0.0'
 OUT = os.path.join(ROOT, 'docs', 'release', VER)
 LINES = os.path.join(ROOT, 'docs', 'voice', 'lines')

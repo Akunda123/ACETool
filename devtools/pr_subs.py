@@ -1,7 +1,7 @@
 # 从 prproj 里提取字幕：时间码 + 文本（FormattedTextData 是 base64 序列化文本）
 import gzip, re, base64, xml.etree.ElementTree as ET
 
-P = r'C:\Users\wujichao\Documents\Adobe\Premiere Pro\22.0\acetool.prproj'
+P = r'C:/Users/<user>\Documents\Adobe\Premiere Pro\22.0\acetool.prproj'
 TICKS = 254016000000  # 每秒
 
 xml = gzip.decompress(open(P, 'rb').read()).decode('utf-8', 'ignore')

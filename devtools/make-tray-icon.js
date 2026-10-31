@@ -1,4 +1,4 @@
-// 把 ACE 那个标记（`SVAgent\electron\src\ace-mark-anim.svg` 里的**字母 a**）渲染成**托盘图标**要用的 PNG。
+// 把 ACE 那个标记（`<skills-dir>\electron\src\ace-mark-anim.svg` 里的**字母 a**）渲染成**托盘图标**要用的 PNG。
 //
 // 为什么要脚本而不是手搓：
 //   · SVG 只有浏览器/Illustrator 能光栅化，我们要**透明底 + 精确像素对齐**；
@@ -21,7 +21,7 @@ const EDGE = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
 ].find((p) => fs.existsSync(p));
-const SVG = process.argv[2] || 'C:\\Users\\wujichao\\Documents\\SVAgent\\electron\\src\\ace-mark-anim.svg';
+const SVG = process.argv[2] || 'C:/Users/<user>\\Documents\\<skills-dir>\\electron\\src\\ace-mark-anim.svg';
 const OUT = path.join(__dirname, '..', 'internal', 'tray', 'icon');
 const SIZES = [16, 20, 24, 32, 40, 48];
 const PORT = 9700 + (process.pid % 60);

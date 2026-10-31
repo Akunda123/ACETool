@@ -3,7 +3,7 @@
 const { execFileSync } = require('child_process');
 
 const CLI = 'C:\\Program Files\\ACE Studio\\acestudio-cli.exe';
-const PROJ = 'C:/Users/wujichao/Documents/lala-resaved/未命名1.acep';
+const PROJ = 'C:/Users/<user>/Documents/<project-dir>/未命名1.acep';
 const NOTE = '{e2590def-64e6-4a8a-8683-1083b7e432de}'; // 「沉」
 
 function cli(args) {

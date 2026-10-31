@@ -3,10 +3,10 @@ import io
 import json
 import re
 
-REPORT = r'C:\Users\wujichao\Documents\acetool-app\docs\voice\lines_report.json'
-SUBS = r'C:\Users\wujichao\Documents\acetool-app\docs\pr_subtitles.txt'
-OUT_MD = r'C:\Users\wujichao\Documents\acetool-app\docs\pr_voice_report.md'
-OUT_TSV = r'C:\Users\wujichao\Documents\acetool-app\docs\pr_voice_report.tsv'
+REPORT = r'C:/Users/<user>\Documents\acetool-app\docs\voice\lines_report.json'
+SUBS = r'C:/Users/<user>\Documents\acetool-app\docs\pr_subtitles.txt'
+OUT_MD = r'C:/Users/<user>\Documents\acetool-app\docs\pr_voice_report.md'
+OUT_TSV = r'C:/Users/<user>\Documents\acetool-app\docs\pr_voice_report.tsv'
 
 time = {}
 for line in io.open(SUBS, encoding='utf-8'):

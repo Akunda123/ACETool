@@ -5,7 +5,7 @@ package tray
 // 托盘图标：**从嵌入的 PNG 现做 HICON**（不落临时文件、不依赖资源编译器）。
 //
 // 图片来源：`devtools/make-tray-icon.js` 用无头 Edge 把
-// `SVAgent\electron\src\ace-mark-anim.svg` 里**字母 a** 那条 path 光栅化成 6 档 PNG
+// `<skills-dir>\electron\src\ace-mark-anim.svg` 里**字母 a** 那条 path 光栅化成 6 档 PNG
 // （16/20/24/32/40/48，对应 100%/125%/150%/200%/250%/300% 缩放），黑字透明底。
 // 每档都单独渲染而不是"一张大图缩小"：矢量直接按目标像素画最清楚，缩小会糊。
 //

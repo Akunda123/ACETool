@@ -5,8 +5,8 @@ import os
 import numpy as np
 import soundfile as sf
 
-LINES = r'C:\Users\wujichao\Documents\acetool-app\docs\voice\lines'
-OUT = r'C:\Users\wujichao\Documents\acetool-app\docs\voice\adjutant_all_preview.wav'
+LINES = r'C:/Users/<user>\Documents\acetool-app\docs\voice\lines'
+OUT = r'C:/Users/<user>\Documents\acetool-app\docs\voice\adjutant_all_preview.wav'
 SR = 24000
 
 pieces = []

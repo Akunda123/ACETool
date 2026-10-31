@@ -13,7 +13,7 @@ import traceback
 APP = os.path.dirname(os.path.abspath(__file__))
 os.chdir(APP)
 sys.path.insert(0, APP)
-sys.path.insert(0, r'C:\Users\wujichao\AppData\Local\Temp\ixenv')  # wetext 的 ASCII 副本
+sys.path.insert(0, r'C:/Users/<user>\AppData\Local\Temp\ixenv')  # wetext 的 ASCII 副本
 
 DIST = os.path.dirname(APP)
 MODEL_DIR = os.environ.get('IX_MODEL_DIR') or os.path.join(DIST, 'data', 'checkpoints')
@@ -27,9 +27,9 @@ EMO_TEXT = os.environ.get('IX_EMO_TEXT', '')           # mode 3 用
 EMO_VEC = os.environ.get('IX_EMO_VEC', '')             # mode 2 用：8 个逗号分隔的数
 EMO_AUDIO = os.environ.get('IX_EMO_AUDIO', '')         # mode 1 用
 EMO_ALPHA = float(os.environ.get('IX_EMO_ALPHA', '0.65'))
-TSV = os.environ.get('IX_TSV') or r'C:\Users\wujichao\Documents\acetool-app\docs\pr_voice_lines.tsv'
-OUT_DIR = os.environ.get('IX_OUT') or r'C:\Users\wujichao\Documents\acetool-app\docs\voice\lines'
-REPORT = r'C:\Users\wujichao\Documents\acetool-app\docs\voice\lines_report.json'
+TSV = os.environ.get('IX_TSV') or r'C:/Users/<user>\Documents\acetool-app\docs\pr_voice_lines.tsv'
+OUT_DIR = os.environ.get('IX_OUT') or r'C:/Users/<user>\Documents\acetool-app\docs\voice\lines'
+REPORT = r'C:/Users/<user>\Documents\acetool-app\docs\voice\lines_report.json'
 
 ONLY = {int(x) for x in os.environ.get('IX_ONLY', '').split(',') if x.strip()}
 a = int(sys.argv[1]) if len(sys.argv) > 1 else 1

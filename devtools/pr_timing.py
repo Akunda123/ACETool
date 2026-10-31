@@ -1,9 +1,9 @@
 # 汇总配音结果：音频时长 vs 字幕槽位，给出时间轴调整建议（可直接照着改 PR）
 import io, json, os, subprocess, sys
 
-REPORT = r'C:\Users\wujichao\Documents\acetool-app\docs\voice\lines_report.json'
-OUT_MD = r'C:\Users\wujichao\Documents\acetool-app\docs\pr_timing_plan.md'
-OUT_TSV = r'C:\Users\wujichao\Documents\acetool-app\docs\pr_timing_plan.tsv'
+REPORT = r'C:/Users/<user>\Documents\acetool-app\docs\voice\lines_report.json'
+OUT_MD = r'C:/Users/<user>\Documents\acetool-app\docs\pr_timing_plan.md'
+OUT_TSV = r'C:/Users/<user>\Documents\acetool-app\docs\pr_timing_plan.tsv'
 
 rep = json.load(io.open(REPORT, encoding='utf-8'))
 rep.sort(key=lambda r: r['idx'])

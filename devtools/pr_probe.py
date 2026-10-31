@@ -1,7 +1,7 @@
 # 探查 prproj 结构：是否含字幕/文本，以及它们存在哪
 import gzip, re, sys, os
 
-p = r'C:\Users\wujichao\Documents\Adobe\Premiere Pro\22.0\acetool.prproj'
+p = r'C:/Users/<user>\Documents\Adobe\Premiere Pro\22.0\acetool.prproj'
 raw = open(p, 'rb').read()
 print('size', len(raw), 'head', raw[:8])
 

@@ -11,7 +11,7 @@ if (-not (Test-Path 'I:\runtime\python.exe')) {
     L ('subst recreated: ' + (Test-Path 'I:\runtime\python.exe'))
 }
 
-$LINES = 'C:\Users\wujichao\Documents\acetool-app\docs\voice\lines'
+$LINES = 'C:/Users/<user>\Documents\acetool-app\docs\voice\lines'
 
 # 1) 等第一批退出（python 进程消失）
 while ($true) {
@@ -39,5 +39,5 @@ foreach ($try in 1..2) {
 }
 
 # 3) 时长汇总（用系统 python，不占显卡）
-& 'C:\Users\wujichao\AppData\Local\Programs\Python\Python310\python.exe' 'C:\Users\wujichao\Documents\acetool-app\devtools\pr_lines_summary.py' *>> $Log
+& 'C:/Users/<user>\AppData\Local\Programs\Python\Python310\python.exe' 'C:/Users/<user>\Documents\acetool-app\devtools\pr_lines_summary.py' *>> $Log
 L 'summary done'

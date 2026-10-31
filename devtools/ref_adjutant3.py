@@ -3,8 +3,8 @@ import av
 import numpy as np
 import soundfile as sf
 
-SRC = r'C:\Users\wujichao\Documents\acetool-app\docs\voice\_adjutant.aac'
-OUTDIR = r'C:\Users\wujichao\Documents\acetool-app\docs\voice'
+SRC = r'C:/Users/<user>\Documents\acetool-app\docs\voice\_adjutant.aac'
+OUTDIR = r'C:/Users/<user>\Documents\acetool-app\docs\voice'
 SR = 24000
 
 container = av.open(SRC)

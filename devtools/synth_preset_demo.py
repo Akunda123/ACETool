@@ -11,7 +11,7 @@ APP = os.path.dirname(os.path.abspath(__file__))
 os.chdir(APP)
 sys.path.insert(0, APP)
 # wetext 的 kaldifst 打不开中文路径 ⇒ 用 ASCII 路径下的副本（11MB，复制自 site-packages）
-sys.path.insert(0, r"C:\Users\wujichao\AppData\Local\Temp\ixenv")
+sys.path.insert(0, r"C:/Users/<user>\AppData\Local\Temp\ixenv")
 
 DIST = os.path.dirname(APP)
 MODEL_DIR = os.path.join(DIST, "data", "checkpoints")
@@ -22,7 +22,7 @@ os.environ.setdefault("HUGGINGFACE_HUB_CACHE", os.path.join(DIST, "data", "hf_ca
 os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(DIST, "data", ".numba_cache"))
 
 PROMPT = os.path.join(APP, "prompts", "library", "播音.wav")
-OUT_DIR = r"C:\Users\wujichao\Documents\acetool-app\docs\voice"
+OUT_DIR = r"C:/Users/<user>\Documents\acetool-app\docs\voice"
 TEXTS = {
     "preset_boyin_short.wav": "这是一个贴在 ACE Studio 边上的小工具。",
     "preset_boyin_demo.wav": (

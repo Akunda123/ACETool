@@ -36,7 +36,7 @@ func trimFloat(v float64) string {
 
 // clipNameOf 取片段名给人看。
 //
-// ⚠️ 真工程里**片段可能没有 name（或它是空串）** —— 实测 `lala-resaved/未命名1.acep` 就是空的，
+// ⚠️ 真工程里**片段可能没有 name（或它是空串）** —— 实测 `<project-dir>/未命名1.acep` 就是空的，
 // 而 CLI 的 `clipName` 是它自己拿歌词拼的（"浮沉人海繁 a 太多虚幻的"）⇒ 文件侧读不到那个名字。
 // 与其印出「片段「」」，这里回一个不含糊的占位。
 func clipNameOf(pat *cbor.Node) string {
