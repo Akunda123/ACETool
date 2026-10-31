@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>跨轨道复制音高线</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;flex:0 0 auto}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px}
+    .warn{margin:0 0 10px;padding:8px 10px;border:1px solid var(--warn,#d9a441);border-left-width:4px;
+      border-radius:6px;background:rgba(217,164,65,.12);color:#ffd89a;font-size:12.5px}
+    .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0}
+    .row .lb{color:var(--dim,#9498a0);font-size:12px;flex:0 0 auto}
+    .row .sp{flex:1}
+    .msg{color:var(--dim,#9498a0);font-size:12px}
+    input[type=number]{background:var(--inset,#242830);border:1px solid var(--line,#3f434a);color:var(--fg,#d6dae0);
+      border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;width:64px;font-variant-numeric:tabular-nums}
+    select{background:var(--inset,#242830);border:1px solid var(--line,#3f434a);color:var(--fg,#d6dae0);
+      border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;min-width:0}
+    label.ck{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer}
+    label.ck input{accent-color:var(--accent,#1a73e8)}
+    #mmwrap{position:relative;flex:0 0 auto;border:1px solid var(--line,#3f434a);border-radius:6px;overflow:hidden;
+      background:var(--inset,#242830);margin:6px 0}
+    #mm{display:block;width:100%;height:150px;touch-action:none;cursor:crosshair}
+    .legend{display:flex;gap:14px;align-items:center;font-size:11.5px;color:var(--dim,#9498a0);flex-wrap:wrap}
+    .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+    .step{display:flex;align-items:center;gap:8px;margin:6px 0}
+    .step b{flex:0 0 auto;font-weight:500;color:var(--ok,#5ebd7a)}
+    .out{margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--inset,#242830);
+      border:1px solid var(--line,#3f434a);border-radius:6px;padding:8px 10px;font:12px/1.55 ui-monospace,Consolas,monospace;
+      color:var(--dim,#9498a0);min-height:70px;max-height:42vh;overflow:auto}
+    .out.ok{color:var(--ok,#5ebd7a)}
+    .out.bad{color:var(--bad,#e06c75)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>跨轨道复制音高线</h1>
+    <span class="stat"><span class="dot" id="dot"></span><span id="stat">读取中…</span></span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <div class="warn">改工程走的是**文件**：直接改写当前工程的 <b>.acep</b>。
+      顺序 ① 保存工程 → ② 执行（读路径 → 改 → 替换）→ ③ 自动重新加载；执行前自动备份，可一键恢复。
+      ⚠️ 实测（2026-10-15）：③ 让 ACE 重开工程时**会把 ACE 的撤销栈整个清掉**（6 条 → 0 条）⇒ 之后 Ctrl+Z 回不到以前，
+      **还原只能靠 ③ 的「恢复备份」**。</div>
+
+    <div class="row">
+      <span class="lb">轨道</span>
+      <select id="src"></select>
+      <span class="msg">→</span>
+      <select id="dst"></select>
+    </div>
+    <div class="row">
+      <span class="lb">源</span>
+      <input type="number" id="s1" min="1" step="1" autocomplete="off">
+      <span class="msg">–</span>
+      <input type="number" id="s2" min="1" step="1" autocomplete="off">
+      <span class="msg">小节（目标轨的**同一段时间**）</span>
+    </div>
+
+    <div id="mmwrap"><canvas id="mm"></canvas></div>
+    <div class="row legend">
+      <span><i style="background:#1a73e8"></i>源轨</span>
+      <span><i style="background:#d9a441"></i>目标轨</span>
+      <span><i style="background:rgba(26,115,232,.35)"></i>共享时间窗口</span>
+      <span class="sp"></span>
+      <span>在图上拖 = 拉这段时间窗口</span>
+    </div>
+    <div class="row">
+      <span class="lb">复制</span>
+      <label class="ck"><input type="checkbox" id="line" checked autocomplete="off"> 曲线</label>
+      <label class="ck"><input type="checkbox" id="anchor" checked autocomplete="off"> 锚点</label>
+      <label class="ck"><input type="checkbox" id="vib" checked autocomplete="off"> 音符颤音</label>
+    </div>
+    <div class="msg" id="rangeInfo"></div>
+
+    <div class="step"><b>①</b>
+      <button class="btn" id="p1" type="button">保存工程</button>
+      <span class="msg" id="p1stat">未执行</span>
+    </div>
+    <div class="step"><b>②</b>
+      <button class="btn" id="prev" type="button" disabled>预览（只看会改什么，不写文件）</button>
+      <button class="btn" id="p2" type="button" disabled>执行（改工程文件）</button>
+      <span class="msg" id="p2stat">先做第 ① 步</span>
+    </div>
+    <div class="step"><b>③</b>
+      <button class="btn" id="undo" type="button" disabled>恢复备份</button>
+      <span class="msg" id="ustat">还没有备份</span>
+    </div>
+    <div class="msg" id="ppath"></div>
+
+    <div class="out" id="out">还没开始。</div>
+  </div>
+
+  <script src="canvasmap.js"></script>
+  <script>
+    /* 跨轨道复制音高线：与「轨道内复制音高线」同一条文件路线（音高线只能走文件），
+       源轨 → 目标轨，**同一段时间**（照 xcopy.notes 的口径：按绝对时间配对）。
+       走 `pitch.xcopy` 工具；三步流程与后悔药都一样（保存 → 执行 → 自动重新加载 / 恢复备份）。 */
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    var LS = 'acetool.pitchx';
+    var S = { mm: null, cur: null, s1: null, s2: null, busy: false, path: '', backup: '' };
+
+    function load() {
+      try {
+        var j = JSON.parse(localStorage.getItem(LS) || '{}');
+        if (j.s1) S.s1 = j.s1; if (j.s2) S.s2 = j.s2;
+        if (j.src !== undefined) S.saveSrc = j.src;
+        if (j.dst !== undefined) S.saveDst = j.dst;
+      } catch (e) { }
+    }
+    function save() {
+      try {
+        localStorage.setItem(LS, JSON.stringify({ s1: $('s1').value, s2: $('s2').value, src: $('src').value, dst: $('dst').value }));
+      } catch (e) { }
+    }
+
+    async function postRun(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 保持 null */ }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      return data;
+    }
+    window.postRun = postRun;
+    function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
+
+    function say(text, cls) {
+      var el = $('out');
+      el.className = 'out' + (cls ? ' ' + cls : '');
+      el.textContent = text;
+    }
+    function busy(on) {
+      S.busy = on;
+      $('p1').disabled = on;
+      $('prev').disabled = on || !S.path;
+      $('p2').disabled = on || !S.path;
+      $('refresh').disabled = on;
+    }
+    function render() {
+      save();
+      var a = $('s1').value, b = $('s2').value;
+      $('rangeInfo').textContent = '源轨第 ' + a + '–' + b + ' 小节 → 目标轨同一段时间（按绝对时间配对，不新建音符）';
+      draw();
+    }
+
+    /* ---------- 缩略图：**两条轨各一行**（源=蓝、目标=琥珀）+ 共享时间窗口 ---------- */
+    function barToTick(bar) {
+      var mm = S.mm, tpb = (mm && mm.ticksPerBar) || 1920;
+      return Math.round((bar - 1) * tpb);
+    }
+    function tickToBar(tick) {
+      var mm = S.mm, tpb = (mm && mm.ticksPerBar) || 1920;
+      return Math.floor(tick / tpb) + 1;
+    }
+    function rowsOf(mm) {
+      var src = parseInt($('src').value, 10), dst = parseInt($('dst').value, 10);
+      var rows = [{ t: null, label: '（全轨）' }];
+      rows = [];
+      (mm.tracks || []).forEach(function (t) {
+        if (!(t.clips || []).length) return;
+        if (t.trackIndex === src || t.trackIndex === dst) rows.push(t);
+      });
+      // 源在上、目标在下（下拉里选的是哪两条就画哪两条）
+      rows.sort(function (x, y) {
+        return (x.trackIndex === src ? 0 : 1) - (y.trackIndex === src ? 0 : 1);
+      });
+      return rows;
+    }
+    var MM = null;
+        // 读不到数据时把画布画成一句话（否则它停在默认 300x150，看着像坏了）
+    function mmEmpty(msg) {
+      try {
+        var el = document.getElementById('mm');
+        if (!el || !window.CanvasMap || !CanvasMap.draw) return;
+        CanvasMap.draw(el, null, { emptyText: msg });
+      } catch (e) { }
+    }
+
+    function draw() {
+      var mm = S.mm, el = $('mm');
+      if (!el) return;
+      if (!mm || !window.CanvasMap) return;
+      // 源范围（小节输入框）→ 色带；音高线本身不画，只看音符范围
+      var sp = (typeof barToTick === 'function') ? (function () {
+        var a = barToTick(parseFloat($('s1').value) || 1);
+        var b = barToTick(parseFloat($('s2').value) || 1);
+        if (!(b > a)) b = a + 1920;
+        return { srcAbs: a, srcEndAbs: b, dstAbs: a, dstEndAbs: b };
+      })() : null;
+      var st = parseInt($('src').value, 10); if (isNaN(st)) st = S.cur;
+      var dt = parseInt($('dst').value, 10); if (isNaN(dt)) dt = S.cur;
+      var picks = [];
+      if (sp) {
+        picks.push({ begin: sp.srcAbs, end: sp.srcEndAbs, track: st,
+          color: 'rgba(26,115,232,.34)', stroke: '#1a73e8' });
+        // 源/目标同一条轨时琥珀会盖住蓝框 ⇒ 不画目标框（搬去别的轨才需要）
+        if (dt !== st) picks.push({ begin: sp.dstAbs, end: sp.dstEndAbs, track: dt,
+          color: 'rgba(217,164,65,.34)', stroke: '#d9a441' });
+      }
+      MM = window.CanvasMap.draw(el, mm, { picks: picks });
+    }
+
+    /* 在图上拖 = 拉这段时间窗口 */
+    function pxOf(ev) { var r = $('mm').getBoundingClientRect(); return ev.clientX - r.left; }
+    function barAtPx(px) {
+      var mm = S.mm, cssW = $('mm').clientWidth || 620, pad = 8, w = Math.max(1, cssW - pad * 2);
+      var total = 1920;
+      (mm.tracks || []).forEach(function (t) { (t.clips || []).forEach(function (cl) { total = Math.max(total, cl.end); }); });
+      if (mm.durationTick) total = Math.max(total, mm.durationTick);
+      var tick = Math.max(0, Math.min(total, (px - pad) / w * total));
+      return Math.max(1, Math.round(tick / (mm.ticksPerBar || 1920) + 1));
+    }
+    $('mm').addEventListener('pointerdown', function (ev) {
+      $('mm').setPointerCapture(ev.pointerId);
+      S.drag = { bar: barAtPx(pxOf(ev)) };
+      $('s1').value = S.drag.bar; $('s2').value = S.drag.bar;
+      render();
+    });
+    $('mm').addEventListener('pointermove', function (ev) {
+      if (!S.drag) return;
+      var bar = barAtPx(pxOf(ev));
+      $('s1').value = Math.min(S.drag.bar, bar);
+      $('s2').value = Math.max(S.drag.bar, bar);
+      $('rangeInfo').textContent = '源轨第 ' + $('s1').value + '–' + $('s2').value + ' 小节 → 目标轨同一段时间';
+      draw();
+    });
+    var drop = function () { if (S.drag) { S.drag = null; save(); render(); } };
+    $('mm').addEventListener('pointerup', drop);
+    $('mm').addEventListener('pointercancel', drop);
+    window.addEventListener('resize', draw);
+
+    $('p1').addEventListener('click', async function () {
+      if (S.busy) return;
+      busy(true);
+      $('p1stat').textContent = '保存中…';
+      say('① 保存工程…');
+      try {
+        var d = await postRun('project.save', { dryRun: '0' });
+        var p = firstJSON(d).savedPath || '';
+        var pd = await postRun('project.path', {});
+        var pj = firstJSON(pd);
+        S.path = p || pj['工程文件路径'] || '';
+        $('p1stat').textContent = d.ok ? '已保存' : ('失败：' + (d.hint || ''));
+        $('ppath').textContent = S.path ? ('工程文件：' + S.path) : '';
+        if (!S.path) {
+          say('① 没拿到路径：这份工程**还没保存过**（临时工程）。\n' +
+            '请你在 ACE 里自己**保存 / 另存为**一个工程包（存到哪由你定），存好之后再点一次 ①。', 'bad');
+        } else {
+          say('① 已保存。工程文件：' + S.path + (pj['未保存改动'] ? ('\n未保存改动：' + pj['未保存改动']) : '') +
+            '\n\n下一步：点 ② 执行。', 'ok');
+        }
+      } catch (e) {
+        say('① 保存失败：' + e.message, 'bad');
+        $('p1stat').textContent = '失败';
+      } finally {
+        busy(false);
+        $('p2stat').textContent = S.path ? '可以执行了' : '先做第 ① 步';
+      }
+    });
+
+    // ⭐「预览」= 同一个工具跑 `dryRun=1`（只算要改什么，不写一个字节、不备份）：「执行」= 真写
+    async function applyPitchX(dry) {
+      if (S.busy) return;
+      busy(true);
+      $('p2stat').textContent = dry ? '预览中…' : '改文件中…';
+      say(dry ? '② 预览：只看会改什么（不写文件、不备份）…' : '② 改工程文件…（先备份，再原地替换）');
+      try {
+        var d = await postRun('pitch.xcopy', {
+          path: S.path,
+          srcTrackIndex: $('src').value, dstTrackIndex: $('dst').value,
+          srcBeginBar: $('s1').value, srcEndBar: $('s2').value,
+          line: $('line').checked ? '1' : '0',
+          anchor: $('anchor').checked ? '1' : '0',
+          vibrato: $('vib').checked ? '1' : '0',
+          dryRun: dry ? '1' : '0',
+        });
+        if (!d.ok) { say((dry ? '② 预览失败：' : '② 失败：') + (d.hint || ''), 'bad'); $('p2stat').textContent = '失败'; return; }
+        var r = firstJSON(d);
+        var L = [dry ? '② 预览（没有写任何字节）' : '② 已改工程文件'];
+        L.push((r['轨道'] || '') + ' · ' + (r['片段'] || ''));
+        L.push('源：' + r['源'] + '\n目标：' + r['目标']);
+        L.push('曲线：' + ((r['曲线'] || {}).结果 || ''));
+        L.push('锚点：' + ((r['锚点'] || {}).结果 || ''));
+        L.push('音符颤音：' + ((r['音符颤音'] || {}).结果 || ''));
+        if (r['备份']) { L.push('备份：' + r['备份']); S.backup = r['备份']; $('undo').disabled = false; $('ustat').textContent = '可恢复：' + r['备份']; }
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        if (r['提示']) L.push(r['提示']);
+        // 预览：没写文件 ⇒ 不重开工程，到此为止
+        if (dry) { say(L.join('\n'), ''); $('p2stat').textContent = '预览完成（没写）'; return; }
+        say(L.join('\n'), 'ok');
+        $('p2stat').textContent = '已写入';
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+        var od = await postRun('project.open', { path: S.path, dryRun: '0' });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : ('\n\n重新加载**失败**：' + (od.hint || '') + '\n（手动在 ACE 里重新打开这份工程）')),
+          od.ok ? 'ok' : 'bad');
+      } catch (e) {
+        say((dry ? '② 预览失败：' : '② 失败：') + e.message, 'bad');
+        $('p2stat').textContent = '失败';
+      } finally {
+        busy(false);
+      }
+    }
+    $('prev').addEventListener('click', function () { applyPitchX(true); });
+    $('p2').addEventListener('click', function () { applyPitchX(false); });
+
+    $('undo').addEventListener('click', async function () {
+      if (S.busy || !S.path) return;
+      if (!confirm('把最近一次备份换回工程文件？（换之前会给当前文件也留一份备份）')) return;
+      busy(true);
+      $('ustat').textContent = '恢复中…';
+      try {
+        var d = await postRun('project.restore', { path: S.path, backup: S.backup || '', dryRun: '0' });
+        if (!d.ok) { say('恢复失败：' + (d.hint || ''), 'bad'); $('ustat').textContent = '失败'; return; }
+        var r = firstJSON(d);
+        var L = ['已把备份换回工程文件', '用哪份：' + r['用哪份备份'] + '（' + r['备份时间'] + '）'];
+        if (r['换回去之前又留的一份']) L.push('换之前的当前文件也留了一份：' + r['换回去之前又留的一份']);
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+        var od = await postRun('project.open', { path: S.path, dryRun: '0' });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : '\n\n重新加载失败：' + (od.hint || '')), od.ok ? 'ok' : 'bad');
+        $('ustat').textContent = '已恢复';
+      } catch (e) {
+        say('恢复失败：' + e.message, 'bad');
+        $('ustat').textContent = '失败';
+      } finally {
+        busy(false);
+      }
+    });
+
+    $('refresh').addEventListener('click', function () { boot(); });
+    ['s1', 's2'].forEach(function (id) { $(id).addEventListener('change', render); });
+    ['src', 'dst'].forEach(function (id) { $(id).addEventListener('change', render); });
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      try {
+        var d = await postRun('view.minimap', { notes: '24' });
+        var mm = firstJSON(d);
+        if (!d.ok || !mm || !mm.tracks) throw new Error(d.hint || '拿不到工程缩略图');
+        S.mm = mm;
+        var tracks = (mm.tracks || []).filter(function (t) { return (t.clips || []).length > 0; });
+        var html = tracks.map(function (t) {
+          return '<option value="' + t.trackIndex + '">' + t.trackIndex + ' · ' + (t.name || '(无名)') +
+            '（' + (t.type || '') + '）</option>';
+        }).join('');
+        $('src').innerHTML = html; $('dst').innerHTML = html;
+        if (tracks.length) {
+          var cur = (S.saveSrc !== undefined && S.saveSrc !== '') ? S.saveSrc : String(tracks[0].trackIndex);
+          $('src').value = cur;
+          var other = tracks.filter(function (t) { return String(t.trackIndex) !== cur; })[0] || tracks[0];
+          $('dst').value = (S.saveDst !== undefined && S.saveDst !== '') ? S.saveDst : String(other.trackIndex);
+        }
+        if (S.s1 && S.s2) { $('s1').value = S.s1; $('s2').value = S.s2; }
+        else { $('s1').value = 1; $('s2').value = 1; }
+        $('stat').textContent = [(mm.meter || ''), (mm.tempo ? mm.tempo + ' BPM' : ''), tracks.length + ' 条有声轨'].filter(Boolean).join(' · ');
+        $('dot').className = 'dot on';
+        render();
+      } catch (e) {
+        $('stat').textContent = '读取失败：' + e.message;
+        mmEmpty('ACE 没开或读取失败 —— 打开 ACE 后点「刷新」');
+        $('dot').className = 'dot';
+      }
+    }
+    load();
+    render();
+    boot();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

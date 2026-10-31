@@ -1,0 +1,22 @@
+# 产物
+/acetool.exe
+/acetool
+/dist/
+
+# Go
+/vendor/
+*.test
+
+# 编辑器
+.vscode/
+.idea/
+acetool.exe~
+
+# 大文件不进仓库（配音/发布包/试验 exe）
+docs/voice/
+docs/release/
+/railclick.exe
+/railtry.exe
+/manualpatch.exe
+/panelcheck.exe
+/wipepitch.exe

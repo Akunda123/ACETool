@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>ACETool · 设置</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    /* 配色 = **ACETool 自己的那套**（与 style.css 同源：用户给的底色 #282c33 + 蓝 #1a73e8） */
+    :root{
+      --bg:#282c33; --panel:#2f333a; --panel2:#171a20; --border:#3f434a;
+      --text:#d6dae0; --body:#c3cad6; --muted:#9498a0;
+      --accent:#1a73e8; --danger:#e06c75; --ok:#5ebd7a;
+      --hover:rgba(255,255,255,.06); --active:rgba(26,115,232,.18);
+    }
+    /* 输入框/下拉：浏览器默认是**白底**，在这一套深色里像块补丁（2026-10-17 补的工具页就撞上了）。
+       统一成 `--panel2`（凹进去的输入位），跟原生细条参数条里的输入框同一个观感。 */
+    input[type=text],input[type=number],select{
+      background:var(--panel2);color:var(--text);border:1px solid var(--border);
+      border-radius:5px;padding:4px 6px;font:inherit;
+    }
+    input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;border-color:var(--accent)}
+    input[type=checkbox]{accent-color:var(--accent)}
+    .muted{color:var(--muted)}
+    .msg.ok{color:var(--ok)} .msg.bad{color:var(--danger)}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;background:var(--bg);color:var(--body);
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif;display:flex;overflow:hidden;
+    }
+    /* 左侧导航（照 Electron 那份的分页式设置） */
+    nav{width:132px;flex:0 0 auto;background:var(--panel);border-right:1px solid var(--border);padding:10px 0}
+    nav button{
+      display:block;width:100%;text-align:left;padding:9px 14px;border:0;background:none;
+      color:var(--body);font:inherit;cursor:pointer;
+    }
+    nav button:hover{background:var(--hover)}
+    nav button.on{background:var(--active);color:var(--accent)}
+    main{flex:1;overflow:auto;padding:16px 18px}
+    .page{display:none}
+    .page.on{display:block}
+    h1{font-size:15px;color:var(--text);margin:0 0 2px;font-weight:600}
+    .sub{font-size:12px;color:var(--muted);margin-bottom:12px}
+    section{background:var(--panel);border:1px solid var(--border);border-radius:8px;margin:0 0 12px;padding:4px 12px}
+    h2{font-size:12px;color:var(--muted);font-weight:600;margin:10px 0 4px}
+    .row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
+    .row:last-child{border-bottom:0}
+    .label{flex:0 0 108px;color:var(--text);font-size:12px}
+    .value{flex:1;min-width:0;color:var(--body);font-size:12px;word-break:break-all}
+    .key{
+      flex:0 0 108px;text-align:center;font:600 11px/1 ui-monospace,Consolas,monospace;
+      background:#242830;border:1px solid var(--border);border-radius:5px;padding:5px 6px;
+      color:var(--text);cursor:pointer;
+    }
+    .key:hover{border-color:var(--accent)}
+    .key.cap{border-color:var(--accent);color:var(--accent)}
+    .key.none{color:var(--muted)}
+    label.chk{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer}
+    select,input[type=number]{
+      background:var(--panel2);border:1px solid var(--border);color:var(--text);
+      border-radius:5px;padding:4px 6px;font:inherit;font-size:12px;
+    }
+    /* 快捷键行的状态徽标（用户 2026-10-21：去掉那列不统一的描述，只留徽标） */
+  .badge{display:inline-block;padding:0 6px;border-radius:9px;font-size:11px;line-height:18px;border:1px solid var(--line)}
+  .badge.ok{color:#8fd6a5;border-color:#2f5c3c;background:#1d2b22}
+  .badge.bad{color:#f0b6b3;border-color:#6b2f2c;background:#2b1d1d}
+
+  /* 按钮的**基础样式**：浏览器默认那颗浅灰按钮在这一套深色里是块补丁（2026-10-17 加工具页时撞上）。
+       `.act` 是主按钮（蓝），`.ghost` 是次按钮（透明底 + 描边）。 */
+    button{
+      background:var(--panel2);border:1px solid var(--border);color:var(--text);
+      border-radius:6px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;
+    }
+    button:hover{background:var(--hover);border-color:var(--muted)}
+    button.ghost{background:transparent}
+    button.act{
+      background:var(--active);border:1px solid var(--accent);color:var(--accent);
+      border-radius:6px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;
+    }
+    button.act:hover{background:rgba(26,115,232,.3)}
+    a{color:var(--accent);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .sep{color:var(--muted);margin:0 6px}
+    .bar{display:flex;align-items:center;gap:10px;padding:0 0 12px}
+    .msg{font-size:12px;color:var(--muted)}
+    .msg.bad{color:var(--danger)}
+  </style>
+</head>
+
+<body>
+  <nav>
+    <button class="on" data-page="keys">快捷键</button>
+    <button data-page="tool">工具</button>
+    <button data-page="layout">页面布局</button>
+    <button data-page="about">关于</button>
+  </nav>
+  <main>
+    <!-- 快捷键 -->
+    <div class="page on" id="page-keys">
+      <h1>快捷键</h1>
+      <div class="sub">点键位格 → 按组合键（Esc 取消、Backspace 清空）；**所有键都是系统级**（ACE 在前台也会响应）</div>
+      <div id="keyBanner" class="msg" style="position:sticky;top:0;z-index:5;margin:6px 0 8px;
+           padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--inset,#242830);display:none"></div>
+      <div id="keys"></div>
+      <div class="bar" style="padding-top:12px">
+        <button class="act" id="saveKeys">保存并重新注册</button>
+        <button class="ghost" id="clearKeys" type="button">全部清空</button>
+        <span class="msg" id="keyMsg"></span>
+      </div>
+    </div>
+
+    <!-- 工具（exe 自己的配置；2026-10-17 加） -->
+    <div class="page" id="page-tool">
+      <h1>工具</h1>
+      <div class="sub">这些是 <b>exe 自己</b>的设置（写在 config.json 里，不碰 ACE 的工程）</div>
+
+      <section>
+        <h2>acestudio-cli</h2>
+        <div class="row">
+          <div class="label">此刻在用</div>
+          <div class="value" id="usingCli">—</div>
+        </div>
+        <div class="row">
+          <div class="label">自动探测到</div>
+          <div class="value"><span id="detectedCli">—</span> <span class="muted" id="detectedFrom"></span></div>
+        </div>
+        <div class="row">
+          <div class="label">手选路径</div>
+          <div class="value">
+            <input type="text" id="cliPath" autocomplete="off" spellcheck="false"
+                   placeholder="留空 = 交给自动探测；可把文件拖进来，或点「浏览…」" style="width:100%;max-width:420px">
+            <button class="ghost" id="cliBrowse" type="button" title="用系统对话框选一个文件（浏览器拿不到本地路径）">浏览…</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">命令超时</div>
+          <div class="value"><input type="number" id="timeoutSec" min="1" max="120" step="1" autocomplete="off" style="width:78px"> 秒</div>
+        </div>
+        <div class="bar">
+          <button class="act" id="saveTool">保存</button>
+          <button class="ghost" id="redetect">重新检测</button>
+          <span class="msg" id="toolMsg"></span>
+        </div>
+      </section>
+
+      <section>
+        <h2>ACE侧栏</h2>
+        <div class="row">
+          <div class="label">现在</div>
+          <div class="value"><span id="railState">—</span></div>
+        </div>
+        <div class="row">
+          <div class="label">随面板启动</div>
+          <div class="value"><label><input type="checkbox" id="railOnBoot"> 启动面板时自动起来（下次启动生效）</label></div>
+        </div>
+        <div class="bar">
+          <button class="act" id="railToggle">—</button>
+          <span class="msg" id="railMsg"></span>
+        </div>
+      </section>
+
+      <section>
+        <h2>开机启动</h2>
+        <div class="row">
+          <div class="label">状态</div>
+          <div class="value"><span id="autoState">—</span></div>
+        </div>
+        <div class="row">
+          <div class="label">启动方式</div>
+          <div class="value">
+            <label><input type="checkbox" id="autoStart"> 登录 Windows 时自动运行 ACETool</label>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">写入位置</div>
+          <div class="value muted" id="autoCmd">—</div>
+        </div>
+        <div class="bar">
+          <button class="act" id="autoSave">保存开机启动</button>
+          <span class="msg" id="autoMsg"></span>
+        </div>
+      </section>
+
+      <section>
+        <h2>面板</h2>
+        <div class="row">
+          <div class="label">地址</div>
+          <div class="value" id="panelUrl">—</div>
+        </div>
+        <div class="row">
+          <div class="label">配置文件</div>
+          <div class="value muted" id="configPath">—</div>
+        </div>
+        <div class="bar">
+          <button class="ghost" id="openPanel">打开主页面</button>
+          <span class="msg" id="panelMsg"></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- 页面布局 -->
+    <div class="page" id="page-layout">
+      <h1>页面布局</h1>
+      <div class="sub">影响主页面</div>
+      <section>
+        <h2>内容区</h2>
+        <div class="row">
+          <div class="label">列数</div>
+          <div class="value">
+            <select id="cols">
+              <option value="auto">自动（按宽度）</option>
+              <option value="2">2 列</option>
+              <option value="3">3 列</option>
+              <option value="4">4 列</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">按钮高度</div>
+          <div class="value">
+            <select id="bh">
+              <option value="44">标准 44px</option>
+              <option value="34">紧凑 34px</option>
+              <option value="56">宽松 56px</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">悬停注释延迟</div>
+          <div class="value"><input type="number" id="tipDelay" min="0" max="5000" step="100" autocomplete="off" style="width:78px"> 毫秒</div>
+        </div>
+        <!-- ⚠️ 2026-10-17 用户：「删 14 个空按钮」⇒「内容按钮数」这个控件一起去掉
+             （那 14 个「内容N」占位格就是它控制的；现在网格按实际按钮数排） -->
+      </section>
+      <!-- ⭐ 用户 2026-10-20：按钮的顺序与显隐（侧栏与主面板**同一份**）。
+           ⛔ 隐藏只影响显示：被隐藏的按钮快捷键照跑、工具照用。 -->
+      <section>
+        <h2>按钮顺序与显示</h2>
+        <div class="sub">拖动行或点 ↑↓ 改顺序；取消勾选 = 这一项不画（快捷键照跑）。保存后侧栏立即按新顺序画。</div>
+        <table class="laytab" id="layTab"></table>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="laySave" type="button">保存</button>
+          <button class="btn" id="layReset" type="button">恢复默认</button>
+          <span class="msg" id="layMsg"></span>
+        </div>
+      </section>
+    </div>
+    <div class="page" id="page-about">
+      <h1>关于</h1>
+      <div class="sub">ACETool</div>
+      <section>
+        <div class="row">
+          <div class="label">版本</div>
+          <div class="value" id="abVer">—</div>
+        </div>
+        <div class="row">
+          <div class="label">ACE / CLI</div>
+          <div class="value" id="abAce">—</div>
+        </div>
+        <div class="row">
+          <div class="label">进程</div>
+          <div class="value" id="abPid">—</div>
+        </div>
+        <div class="row">
+          <div class="label">更新</div>
+          <div class="value">
+            <span id="abUpd">—</span>
+            <button class="btn" id="abUpdBtn" type="button" style="margin-left:8px">检查更新</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">反馈 / 联系</div>
+          <div class="value">
+            <a href="https://space.bilibili.com/12131593" target="_blank">B 站主页</a><span class="sep">·</span>
+            <a href="mailto:1073243952@qq.com">1073243952@qq.com</a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    var $ = function (id) { return document.getElementById(id); };
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var LAYOUT_KEY = 'acetool.layout';
+
+    /* ---------- 左导航 ---------- */
+    document.querySelectorAll('nav button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('nav button').forEach(function (x) { x.classList.remove('on'); });
+        document.querySelectorAll('.page').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        $('page-' + b.getAttribute('data-page')).classList.add('on');
+      });
+    });
+
+    /* ---------- 键位记法（与 exe 侧 internal/hotkeys 是同一份契约） ---------- */
+    var NAMED = {
+      Enter: 1, Space: 1, Tab: 1, Escape: 1, Backspace: 1, Delete: 1, Insert: 1, Home: 1, End: 1,
+      PageUp: 1, PageDown: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1,
+      BracketLeft: '[', BracketRight: ']', Slash: '/', Backslash: '\\', Semicolon: ';',
+      Quote: "'", Comma: ',', Period: '.', Minus: '-', Equal: '=', Backquote: '`',
+    };
+    function codeToMain(e) {
+      var c = e.code || '';
+      if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+      if (/^Digit[0-9]$/.test(c)) return c.slice(5);
+      if (/^F([1-9]|1[0-9]|2[0-4])$/.test(c)) return c;
+      if (NAMED[c] === 1) return c;
+      if (typeof NAMED[c] === 'string') return NAMED[c];
+      if (e.key === '?') return '?';
+      if (e.key && e.key.length === 1) return e.key.toUpperCase();
+      return c || e.key || '';
+    }
+    function normalize(e) {
+      var p = [];
+      if (e.ctrlKey) p.push('Ctrl');
+      if (e.altKey) p.push('Alt');
+      if (e.shiftKey) p.push('Shift');
+      if (e.metaKey) p.push('Win');
+      if (/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(e.code || '')) return '';
+      var m = codeToMain(e);
+      if (!m) return '';
+      p.push(m);
+      return p.join('+');
+    }
+    var RESERVED = {
+      'Ctrl+W': 1, 'Ctrl+T': 1, 'Ctrl+N': 1, 'Ctrl+R': 1, 'Ctrl+Shift+R': 1, 'Ctrl+Shift+W': 1,
+      'Ctrl+Shift+T': 1, 'Ctrl+Tab': 1, 'Ctrl+Shift+Tab': 1, 'Ctrl+L': 1, 'Ctrl+D': 1, 'Ctrl+P': 1,
+      'Ctrl+S': 1, 'Ctrl+O': 1, 'Ctrl+H': 1, 'Ctrl+J': 1, 'Ctrl+U': 1, 'Ctrl+F': 1,
+      'Alt+F4': 1, 'Alt+Tab': 1, 'F5': 1, 'F11': 1, 'F12': 1, 'Win+L': 1, 'Win+D': 1,
+    };
+    // keySay：提示同时写顶部吸顶条与底部原位置（吸顶条在长列表上才看得见）
+    function keySay(text, bad) {
+      ['keyBanner', 'keyMsg'].forEach(function (id) {
+        var el = $(id);
+        if (!el) return;
+        el.className = id === 'keyMsg' ? ('msg' + (bad ? ' bad' : '')) : ('msg' + (bad ? ' bad' : ''));
+        el.textContent = text;
+        if (id === 'keyBanner') el.style.display = text ? 'block' : 'none';
+      });
+    }
+    function validate(key, global) {
+      if (!key) return '';
+      if (RESERVED[key]) return '`' + key + '` 被浏览器/系统占着，绑了不会响';
+      var hasMod = /(^|\+)(Ctrl|Alt|Shift|Win)(\+|$)/.test(key);
+      var main = key.indexOf('+') >= 0 ? key.slice(key.lastIndexOf('+') + 1) : key;
+      if (global && !hasMod) return '系统级必须带 Ctrl/Alt';
+      if (!hasMod && !(/^F([1-9]|1[0-9]|2[0-4])$/.test(main) || main === '?' || main === '[' || main === ']')) {
+        return '无修饰键会挡住打字 ⇒ 加 Ctrl/Alt';
+      }
+      return '';
+    }
+
+    /* ---------- 快捷键页 ---------- */
+    var BIND = {};   // 动作 id → {key, global}
+    var ACTS = [];
+    var capId = null;
+    // 本会话里**刚改过还没保存**的绑定：loadKeys() 会从服务端重拉，靠它把本地改动盖回去。
+    //（2026-10-21 实测的坑：捕获完一个键就调 loadKeys()，刚按的键立刻被服务端的旧值盖掉 ⇒ 永远绑不上）
+    var PENDING = {};
+
+    async function loadKeys() {
+      var d = await (await fetch('/api/shortcuts', { cache: 'no-store' })).json();
+      ACTS = d.actions || [];
+      BIND = {};
+      Object.keys(d.bindings || {}).forEach(function (k) {
+        BIND[k] = { key: d.bindings[k].key, global: !!d.bindings[k].global };
+      });
+      Object.keys(PENDING).forEach(function (k) { BIND[k] = PENDING[k]; });
+      var reg = {};
+      (d.registered || []).forEach(function (r) { reg[r.action] = r; });
+      var groups = [], by = {};
+      ACTS.forEach(function (a) {
+        if (!by[a.group]) { by[a.group] = []; groups.push(a.group); }
+        by[a.group].push(a);
+      });
+      $('keys').innerHTML = groups.map(function (g) {
+        return '<section><h2>' + g + '</h2>' + by[g].map(function (a) {
+          var b = BIND[a.id] || { key: '', global: true };
+          // ⚠️ 现在**全部 20 条都只能是系统级**（用户 2026-10-20：「所有的都只能系统级没意义」）
+          // ⇒ 「全局」那个勾已经删掉了；这里恒为 true，服务端那边也照样强制 true（第二道）。
+          var glob = true;
+          var r = reg[a.id];
+          // 用户 2026-10-21：「value 列描述好不统一，有必要保留吗」⇒ 去掉那一列。
+          // 只在**注册失败**时给一个红色徽标（title 里放原因）；说明文字挪到按钮名的 title 上。
+          var badge = '';
+          if (glob && r && !r.ok) {
+            badge = '<span class="badge bad" title="' + String(r.error || '').replace(/"/g, '&quot;') + '">未注册</span>';
+          } else if (b.key && glob && r && r.ok) {
+            badge = '<span class="badge ok" title="已在本机系统级注册">已注册</span>';
+          }
+          return '<div class="row" data-act="' + a.id + '">' +
+            '<div class="label" title="' + String(a.what || '').replace(/"/g, '&quot;') + '">' + a.label + '</div>' +
+            '<div class="key' + (b.key ? '' : ' none') + '" data-cap="' + a.id + '">' + (b.key || '（未绑）') + '</div>' +
+            '<div class="value">' + badge +
+            ' <button class="mini" type="button" data-clear="' + a.id + '" title="清除这个绑定">✕</button>' +
+            '</div>' +
+            '</div>';
+        }).join('') + '</section>';
+      }).join('');
+      bindKeys();
+    }
+
+    function bindKeys() {
+      // 每行的 ✕：直接清掉这一条（不再只靠 Backspace）
+      document.querySelectorAll('[data-clear]').forEach(function (btn) {
+        btn.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          var id = btn.getAttribute('data-clear');
+          BIND[id] = { key: '', global: true };
+          PENDING[id] = BIND[id];
+          capId = null;
+          keySay('已清除「' + id + '」的绑定（还要点「保存并重新注册」才落盘）', false);
+          loadKeys();
+        });
+      });
+      document.querySelectorAll('[data-cap]').forEach(function (el) {
+        el.addEventListener('click', function () {
+          document.querySelectorAll('.key').forEach(function (x) { x.classList.remove('cap'); });
+          el.classList.add('cap');
+          el.textContent = '按下组合键…';
+          capId = el.getAttribute('data-cap');
+        });
+      });
+      document.querySelectorAll('[data-glob]').forEach(function (el) {
+        el.addEventListener('change', function () {
+          var id = el.getAttribute('data-glob');
+          var b = BIND[id] || { key: '', global: false };
+          b.global = el.checked;
+          BIND[id] = b;
+        });
+      });
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (!capId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') { capId = null; loadKeys(); return; }
+      if (e.key === 'Backspace') { BIND[capId] = { key: '', global: (BIND[capId] || {}).global || false }; PENDING[capId] = BIND[capId]; capId = null; loadKeys(); return; }
+      var key = normalize(e);
+      if (!key) return;
+      var b = BIND[capId] || { key: '', global: false };
+      // 主页面那 20 条锁死系统级 ⇒ 采集到键时就按"全局"校验（裸键会被下面那条规则挡下来，
+      // 说清"系统级热键要有修饰键"——这比存下去再静默不响应好）
+      var act = null;
+      ACTS.forEach(function (x) { if (x.id === capId) act = x; });
+      if (act && act.alwaysGlobal) b.global = true;
+      var err = validate(key, b.global);
+      if (err) { keySay(err, true); return; }
+      b.key = key;
+      BIND[capId] = b;
+      PENDING[capId] = b;
+      PENDING[capId] = b;
+      capId = null;
+      loadKeys();
+    }, true);
+
+    $('clearKeys').addEventListener('click', function () {
+      if (!confirm('把**所有**快捷键清空（还要点「保存并重新注册」才落盘）？')) return;
+      Object.keys(BIND).forEach(function (id) { BIND[id] = { key: '', global: true }; PENDING[id] = BIND[id]; });
+      keySay('已全部清空，点「保存并重新注册」落盘', false);
+      loadKeys();
+    });
+    $('saveKeys').addEventListener('click', async function () {
+      var out = {};
+      // ⚠️ 2026-10-20：现在全部 20 条**只能是系统级**（那个勾已删）⇒ 保存时一律 `global:true`，
+      // 不靠 BIND 里的旧值（老配置里可能是 false，会让键在网页里被吞/不注册）。
+      Object.keys(BIND).forEach(function (id) { out[id] = { key: BIND[id].key || '', global: true }; });
+      try {
+        var r = await fetch('/api/shortcuts', { method: 'POST', headers: H, body: JSON.stringify({ bindings: out }) });
+        var d = await r.json();
+        if (d.errors) {
+          keySay(Object.keys(d.errors).map(function (k) { return d.errors[k]; }).join('；'), true);
+          return;
+        }
+        PENDING = {};   // 保存成功 ⇒ 服务端已经有一份，别再盖回去
+        keySay('已保存（已重新注册）', false);
+        loadKeys();
+      } catch (e) {
+        keySay('保存失败：' + e.message, true);
+      }
+    });
+
+    /* ---------- 页面布局页（存 localStorage，home.html 读） ---------- */
+    function readLayout() {
+      var d = { cols: 'auto', bh: 44, tipDelay: 700 };
+      try { return Object.assign(d, JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}')); } catch (e) { return d; }
+    }
+    function writeLayout() {
+      var v = {
+        cols: $('cols').value, bh: parseInt($('bh').value, 10) || 44,
+        tipDelay: Math.max(0, parseInt($('tipDelay').value, 10) || 0),
+      };
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(v));
+      $('layoutMsg') && ($('layoutMsg').textContent = '已保存');
+    }
+    var L = readLayout();
+    $('cols').value = L.cols; $('bh').value = String(L.bh); $('tipDelay').value = L.tipDelay;
+    ['cols', 'bh'].forEach(function (id) { $(id).addEventListener('change', writeLayout); });
+    ['tipDelay'].forEach(function (id) { $(id).addEventListener('input', writeLayout); });
+
+    /* ---------- 工具页（exe 自己的配置：`/api/settings`） ----------
+       口径：这里改的是 **exe 的 config.json**，不是 ACE 的工程文件；
+       保存成功/失败都由 exe 的 `note` 说一句人话，这里**不自己编话术**。 */
+    var H2 = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var S = null;
+
+    function paintTool(d) {
+      S = d;
+      $('usingCli').textContent = d.usingCli || '（未检测到）';
+      $('detectedCli').textContent = d.detectedCli || '（没找到）';
+      $('detectedFrom').textContent = d.detectedFrom ? '（来源：' + d.detectedFrom + '）' : '';
+      $('cliPath').value = d.cliPath || '';
+      $('timeoutSec').value = String(d.timeoutSec || 30);
+      $('railOnBoot').checked = !!d.railOnBoot;
+      $('railState').textContent = d.railRunning ? '在跑（贴着 ACE 窗口）' : '没在跑';
+      $('railToggle').textContent = d.railRunning ? '停掉侧栏' : '开启侧栏';
+      $('panelUrl').textContent = d.panelUrl || '—';
+      $('configPath').textContent = d.configPath || '—';
+      // 开机启动：现场由 exe 读**注册表**给（不来自 config.json）
+      var a = d.autoStart || {};
+      $('autoStart').checked = !!a.enabled;
+      $('autoStart').disabled = !a.supported;
+      $('autoState').textContent = !a.supported ? '这个平台没做'
+        : (a.enabled ? '已开启' : (a.stale ? '⚠️ 注册表里那条指向别的路径（重新勾一下）' : '未开启'));
+      $('autoCmd').textContent = a.supported ? ('注册表 Run\\ACETool = ' + (a.cmd || '（没有）')) : '—';
+      if (a.note) { $('autoMsg').textContent = a.note; $('autoMsg').className = 'msg'; }
+      if (d.note) {
+        $('toolMsg').textContent = d.note;
+        $('toolMsg').className = 'msg ' + (d.ok ? 'ok' : 'bad');
+      }
+    }
+
+    async function loadTool(quiet) {
+      try {
+        paintTool(await (await fetch('/api/settings', { cache: 'no-store' })).json());
+      } catch (e) {
+        if (!quiet) { $('toolMsg').textContent = '读不到设置：' + ((e && e.message) || e); $('toolMsg').className = 'msg bad'; }
+      }
+    }
+
+    /* 开机启动（用户 2026-10-17）：**单独一颗按钮** —— 它动的是注册表，不是配置文件；
+       失败（权限/杀软）要如实显示，不能假装开好了。 */
+    $('autoSave').addEventListener('click', async function () {
+      $('autoMsg').textContent = '保存中…'; $('autoMsg').className = 'msg';
+      try {
+        var r = await fetch('/api/settings', {
+          method: 'POST', headers: H2,
+          body: JSON.stringify({ autoStart: $('autoStart').checked }),
+        });
+        var d = await r.json();
+        if (r.ok) {
+          paintTool(d);
+          $('autoMsg').textContent = ($('autoStart').checked ? '已开启开机启动' : '已关闭开机启动');
+          $('autoMsg').className = 'msg ok';
+        } else {
+          $('autoMsg').textContent = d.error || ('保存失败（HTTP ' + r.status + '）');
+          $('autoMsg').className = 'msg bad';
+        }
+      } catch (e) {
+        $('autoMsg').textContent = '保存失败：' + ((e && e.message) || e);
+        $('autoMsg').className = 'msg bad';
+      }
+    });
+    async function saveTool() {
+      var body = {
+        cliPath: $('cliPath').value.trim(),
+        timeoutSec: parseInt($('timeoutSec').value, 10) || 30,
+      };
+      $('toolMsg').textContent = '保存中…'; $('toolMsg').className = 'msg';
+      try {
+        var r = await fetch('/api/settings', { method: 'POST', headers: H2, body: JSON.stringify(body) });
+        var d = await r.json();
+        if (r.ok) { paintTool(d); }
+        else { $('toolMsg').textContent = d.error || ('保存失败（HTTP ' + r.status + '）'); $('toolMsg').className = 'msg bad'; }
+      } catch (e) {
+        $('toolMsg').textContent = '保存失败：' + ((e && e.message) || e);
+        $('toolMsg').className = 'msg bad';
+      }
+    }
+
+    $('saveTool').addEventListener('click', saveTool);
+    // ⭐ 用户 2026-10-21：「手动路径应该允许外部拖动或浏览」。
+    // 浏览 = 让 **exe** 弹系统对话框（浏览器永远拿不到本地文件真实路径，`file.path` 是 Electron 才有的）；
+    // 拖动 = 浏览器只给 File 对象/文件名 ⇒ 拿得到盘符路径就用，拿不到就如实让人点「浏览…」。
+    async function pickCliPath() {
+      try {
+        var r = await fetch('/api/pick-file', {
+          method: 'POST', headers: H, body: JSON.stringify({ title: '选 acestudio-cli.exe' }),
+        });
+        var j = await r.json();
+        if (j && j.path) {
+          $('cliPath').value = j.path;
+          $('toolMsg').className = 'msg ok';
+          $('toolMsg').textContent = '已选：' + j.path;
+        }
+      } catch (e) {
+        $('toolMsg').className = 'msg bad';
+        $('toolMsg').textContent = '浏览失败：' + e.message;
+      }
+    }
+    if ($('cliBrowse')) $('cliBrowse').addEventListener('click', pickCliPath);
+    if ($('cliPath')) {
+      ['dragover', 'dragenter'].forEach(function (ev) {
+        $('cliPath').addEventListener(ev, function (e) {
+          e.preventDefault();
+          $('cliPath').style.outline = '2px dashed #7cc4ff';
+        });
+      });
+      ['dragleave'].forEach(function (ev) {
+        $('cliPath').addEventListener(ev, function () { $('cliPath').style.outline = ''; });
+      });
+      $('cliPath').addEventListener('drop', function (e) {
+        e.preventDefault();
+        $('cliPath').style.outline = '';
+        var txt = '';
+        try {
+          txt = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').trim();
+        } catch (err) { }
+        var p = txt.replace(/^file:\/\//i, '').replace(/\//g, '\\');
+        if (/^[A-Za-z]:\\/.test(p)) {
+          $('cliPath').value = p;
+          $('toolMsg').className = 'msg ok';
+          $('toolMsg').textContent = '已从拖入的文件取值';
+          return;
+        }
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        $('toolMsg').className = 'msg bad';
+        $('toolMsg').textContent = f
+          ? ('浏览器只给了文件名（' + f.name + '），拿不到完整路径 ⇒ 请点「浏览…」选它')
+          : '没拿到路径 ⇒ 请点「浏览…」';
+      });
+    }
+    $('redetect').addEventListener('click', function () { loadTool(false); });
+    // 「随面板启动」是**只写**的开关（写进 config，下次启动生效）—— 立即给反馈，别等保存按钮
+    $('railOnBoot').addEventListener('change', async function () {
+      try {
+        var d = await (await fetch('/api/settings', {
+          method: 'POST', headers: H2, body: JSON.stringify({ railOnBoot: $('railOnBoot').checked }),
+        })).json();
+        paintTool(d);
+        $('railMsg').textContent = '已保存（下次启动生效）'; $('railMsg').className = 'msg ok';
+      } catch (e) {
+        $('railMsg').textContent = '保存失败：' + ((e && e.message) || e); $('railMsg').className = 'msg bad';
+      }
+    });
+    $('railToggle').addEventListener('click', async function () {
+      var on = !(S && S.railRunning);
+      try {
+        var d = await (await fetch('/api/rail', {
+          method: 'POST', headers: H2, body: JSON.stringify({ enable: on }),
+        })).json();
+        $('railMsg').textContent = d.ok ? (d.message || '好了') : ('失败：' + (d.error || '未知'));
+        $('railMsg').className = 'msg ' + (d.ok ? 'ok' : 'bad');
+        if (d.ok && d.warn) { $('railMsg').textContent += ' · ⚠️ ' + d.warn; }
+        await loadTool(true);
+      } catch (e) {
+        $('railMsg').textContent = '失败：' + ((e && e.message) || e); $('railMsg').className = 'msg bad';
+      }
+    });
+    $('openPanel').addEventListener('click', async function () {
+      try {
+        var r = await (await fetch('/api/app-window', {
+          method: 'POST', headers: H2, body: JSON.stringify({ page: 'home.html' }),
+        })).json();
+        $('panelMsg').textContent = r.ok ? '已开独立窗口' : ('失败：' + (r.error || '未知'));
+        $('panelMsg').className = 'msg ' + (r.ok ? 'ok' : 'bad');
+      } catch (e) {
+        $('panelMsg').textContent = '失败：' + ((e && e.message) || e); $('panelMsg').className = 'msg bad';
+      }
+    });
+    loadTool(true);
+
+    /* ---------- 关于页 ---------- */
+    (async function about() {
+      try {
+        var p = await (await fetch('/api/ping', { cache: 'no-store' })).json();
+        $('abPid').textContent = 'PID ' + p.pid + ' · ' + (p.tools || '');
+      } catch (e) { $('abPid').textContent = '（面板未响应）'; }
+      try {
+        var s = await (await fetch('/api/selfcheck', { cache: 'no-store' })).json();
+        $('abVer').textContent = (s.version && s.version.cli ? 'CLI ' + s.version.cli : '—') +
+          (s.online ? '' : ' · 未连接 ACE');
+        $('abAce').textContent = (s.version && s.version.connected) || '—';
+      } catch (e) { /* 留 — */ }
+    }
+
+    async function loadUpdate(force) {
+      var el = $('abUpd');
+      if (!el) return;
+      el.textContent = '检查中…';
+      try {
+        var j = await (await fetch('/api/update' + (force ? '?force=1' : ''), { cache: 'no-store' })).json();
+        if (j.error) { el.textContent = '检查失败：' + j.error; return; }
+        if (j.newer) {
+          el.innerHTML = '有新版本 <b>' + j.latest + '</b>（当前 ' + j.current + '）· <a href="' + j.url + '" target="_blank">去下载</a>';
+        } else {
+          el.textContent = '已是最新（' + j.current + (j.latest ? ' · 远端 ' + j.latest : '') + '）';
+        }
+      } catch (e) { el.textContent = '检查失败：' + e.message; }
+    }
+    if ($('abUpdBtn')) $('abUpdBtn').addEventListener('click', function () { loadUpdate(true); });
+    })();
+
+    // ⭐ 用户 2026-10-20：「设置里写一栏，负责所有按钮的顺序和是否出现」（侧栏与主面板同一份）。
+    // ⛔ 隐藏只影响显示：被隐藏的按钮快捷键照跑、工具照用。
+    var LAY = [], LAY_DRAG = null;
+    function renderLayout() {
+      var el = $('layTab');
+      if (!el) return;
+      var h = '<tr><th style="width:36px"></th><th>按钮</th><th style="width:56px">显示</th><th style="width:64px">顺序</th></tr>';
+      LAY.forEach(function (it, i) {
+        h += '<tr draggable="true" data-i="' + i + '">' +
+          '<td title="拖动改顺序">⠿</td>' +
+          '<td>' + (it.name || it.key) + '</td>' +
+          '<td><input type="checkbox" data-i="' + i + '"' + (it.hidden ? '' : ' checked') + '></td>' +
+          '<td><button class="mini" data-up="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+          '<button class="mini" data-dn="' + i + '"' + (i === LAY.length - 1 ? ' disabled' : '') + '>↓</button></td></tr>';
+      });
+      el.innerHTML = h;
+      el.querySelectorAll('input[type=checkbox]').forEach(function (c) {
+        c.addEventListener('change', function () { LAY[+c.getAttribute('data-i')].hidden = !c.checked; });
+      });
+      var swap = function (a, b) { var t = LAY[a]; LAY[a] = LAY[b]; LAY[b] = t; renderLayout(); };
+      el.querySelectorAll('button[data-up]').forEach(function (b) {
+        b.addEventListener('click', function () { var i = +b.getAttribute('data-up'); if (i > 0) swap(i - 1, i); });
+      });
+      el.querySelectorAll('button[data-dn]').forEach(function (b) {
+        b.addEventListener('click', function () { var i = +b.getAttribute('data-dn'); if (i < LAY.length - 1) swap(i, i + 1); });
+      });
+      el.querySelectorAll('tr[draggable]').forEach(function (tr) {
+        tr.addEventListener('dragstart', function () { LAY_DRAG = +tr.getAttribute('data-i'); });
+        tr.addEventListener('dragover', function (e) { e.preventDefault(); });
+        tr.addEventListener('drop', function (e) {
+          e.preventDefault();
+          var to = +tr.getAttribute('data-i');
+          if (LAY_DRAG === null || LAY_DRAG === to) return;
+          var mv = LAY.splice(LAY_DRAG, 1)[0];
+          LAY.splice(to, 0, mv);
+          LAY_DRAG = null;
+          renderLayout();
+        });
+      });
+    }
+    async function loadLayout() {
+      try {
+        var j = await (await fetch('/api/layout', { cache: 'no-store' })).json();
+        var byKey = {};
+        (j.items || []).forEach(function (it) { byKey[it.key] = it; });
+        var order = (j.order || []).slice();
+        (j.items || []).forEach(function (it) { if (order.indexOf(it.key) < 0) order.push(it.key); });
+        LAY = order.map(function (k) {
+          var it = byKey[k] || { key: k, name: k, hidden: false };
+          return { key: it.key, name: it.name, hidden: !!it.hidden, defaultHidden: !!it.defaultHidden };
+        });
+        renderLayout();
+      } catch (e) { $('layMsg').textContent = '读不到：' + e.message; }
+    }
+    async function saveLayout(order, hidden, shown, msg) {
+      var r = await fetch('/api/layout', { method: 'POST', headers: H, body: JSON.stringify({ order: order, hidden: hidden, shown: shown || [] }) });
+      var j = await r.json().catch(function () { return {}; });
+      $('layMsg').textContent = r.ok ? msg : ('保存失败：' + (j.error || r.status));
+      return r.ok;
+    }
+    if ($('laySave')) {
+      $('laySave').addEventListener('click', function () {
+        saveLayout(LAY.map(function (i) { return i.key; }),
+          LAY.filter(function (i) { return i.hidden; }).map(function (i) { return i.key; }),
+          LAY.filter(function (i) { return i.defaultHidden && !i.hidden; }).map(function (i) { return i.key; }),
+          '已保存（侧栏已按新顺序画）');
+      });
+      $('layReset').addEventListener('click', async function () {
+        if (await saveLayout([], [], [], '已恢复默认')) loadLayout();
+      });
+      loadLayout();
+    }
+
+    loadKeys();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>填词</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75)}
+    .dot.on{background:var(--ok,#5ebd7a)}
+    .dot.play{background:var(--warn,#d9a441)}
+    /* 行数 / 字数 —— 用户要「最上方动态显示」，所以它**不随列表滚走**（在 .list 外面） */
+    .stats{flex:0 0 auto;display:flex;align-items:baseline;gap:14px;padding:6px 10px;font-size:12px;
+      background:var(--inset,#242830);border-bottom:1px solid var(--line,#3f434a)}
+    .stats b{color:var(--fg,#d6dae0);font-weight:600;font-variant-numeric:tabular-nums}
+    .stats span{color:var(--dim,#9498a0)}
+    .stats .clip{margin-left:auto;color:var(--dim,#9498a0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%}
+    .opts{flex:0 0 auto;display:flex;align-items:center;gap:16px;padding:6px 10px;font-size:12px;border-bottom:1px solid var(--line,#3f434a)}
+    .opts label{display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--fg,#d6dae0)}
+    .opts input{accent-color:var(--accent,#1a73e8)}
+    .list{flex:1 1 auto;overflow:auto;padding:6px 8px 10px}
+    .ln{display:flex;align-items:center;gap:6px;padding:2px 0}
+    .ln .no{flex:0 0 auto;width:38px;text-align:right;color:var(--dim,#9498a0);font-size:11px;font-variant-numeric:tabular-nums}
+    .ln input.tx{flex:1 1 auto;min-width:0;background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      color:var(--fg,#d6dae0);border-radius:5px;padding:4px 7px;font:inherit;font-size:12.5px}
+    .ln input.tx:focus{outline:none;border-color:var(--accent,#1a73e8)}
+    .ln input.tx.ok{border-color:var(--ok,#5ebd7a)}
+    .ln input.tx.bad{border-color:var(--bad,#e06c75)}
+    .ln input.tx.busy{opacity:.6}
+    .ln .rt{flex:0 0 auto;color:var(--warn,#d9a441);cursor:help;font-size:12px}
+    .mini{flex:0 0 auto;border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);
+      border-radius:5px;padding:3px 8px;font:inherit;font-size:11.5px;cursor:pointer}
+    .mini:hover{border-color:var(--accent,#1a73e8)}
+    .mini.on{background:rgba(217,164,65,.2);border-color:var(--warn,#d9a441);color:var(--warn,#d9a441)}
+    .mini:disabled{opacity:.45;cursor:default}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn.on{background:rgba(26,115,232,.2);border-color:var(--accent,#1a73e8);color:var(--accent,#1a73e8)}
+    .msg{font-size:11.5px;color:var(--dim,#9498a0)}
+    .empty{padding:20px 10px;color:var(--dim,#9498a0);font-size:12px}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>填词</h1>
+    <span class="sp"></span>
+    <span class="msg" id="stat"></span>
+    <span class="dot" id="dot"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <!-- 行数 / 字数：**动态**（跟着编辑框走），放最上方且不随列表滚动 -->
+  <div class="stats">
+    <span>行数 <b id="nLines">0</b></span>
+    <span>字数 <b id="nChars">0</b></span>
+    <span class="clip" id="clipName"></span>
+  </div>
+
+  <!-- 两个选项 —— 默认值都按用户口径：按字符隔开**按语种判断**（歌词大多数为中文就勾上）、忽略连音**默认勾上**。
+       ⚠️ 勾选框旁边**不写小字**（用户 2026-10-05：「（按语种自动：中文占了多数）不用显示出来」）——
+       想知道细节就 hover 看 title，别在界面上常驻一行解释。 -->
+  <div class="opts">
+    <label title="一个音符里有多个字符时用 () 括起来；">
+      <input type="checkbox" id="split"> 按字符隔开
+    </label>
+    <label title="`-` 不显示；">
+      <input type="checkbox" id="ignore"> 忽略连音
+    </label>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var LS = 'acetool.lyric';
+    var $ = function (id) { return document.getElementById(id); };
+
+    var S = {
+      split: 'auto',        // auto = 按语种判断（默认）；用户一动就变成 on/off
+      resolved: true,       // 上一次刷新**实际生效**的分割模式（写回要按它，保证"看到的"就是"写回去的"）
+      ignore: true,         // 忽略连音，默认勾上
+      rows: [],             // 当前这一份的每一句（含 tick，试听/跳转要用）
+      leadTicks: 480,       // 句前留多少 tick（服务端按当时 BPM 折的）
+      audition: { gen: 0, on: false },
+    };
+
+    function load() {
+      try {
+        var d = JSON.parse(localStorage.getItem(LS) || '{}');
+        if (d.split) S.split = d.split;
+        if (typeof d.ignore === 'boolean') S.ignore = d.ignore;
+      } catch (e) { }
+    }
+    function save() {
+      try { localStorage.setItem(LS, JSON.stringify({ split: S.split, ignore: S.ignore })); } catch (e) { }
+    }
+
+    async function api(toolId, values) {
+      var r = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      return r.json();
+    }
+    function firstJSON(d) { return d && d.calls && d.calls[0] && d.calls[0].json; }
+
+    /* ---- 计数：行数 / 字数（**跟着编辑框实时变**）---- */
+    function recount() {
+      var boxes = document.querySelectorAll('.ln input.tx');
+      var chars = 0;
+      for (var i = 0; i < boxes.length; i++) {
+        var v = boxes[i].value;
+        for (var k = 0; k < v.length; k++) {
+          if (v[k] !== ' ' && v[k] !== '\t') chars++;
+        }
+      }
+      $('nLines').textContent = String(boxes.length);
+      $('nChars').textContent = String(chars);
+    }
+
+    /* ---- 读：刷新 ---- */
+    async function refresh() {
+      stopAudition(true);
+      $('dot').className = 'dot';
+      $('stat').textContent = '读取中…';
+      var d;
+      try {
+        d = await api('lyric.pages', {
+          perPage: '0',                       // 0 = 不分页：一句话一行，全给出来
+          splitChars: S.split === 'auto' ? 'auto' : (S.split === 'on' ? 'on' : 'off'),
+          ignoreTenuto: S.ignore ? '1' : '0',
+        });
+      } catch (e) {
+        $('stat').textContent = '读不到：' + e.message;
+        return;
+      }
+      var j = firstJSON(d);
+      if (!d.ok || !j) {
+        $('stat').textContent = '读不到（' + ((d && d.hint) || '看完整面板的命令日志') + '）';
+        $('list').innerHTML = '<div class="empty">' + esc((d && d.hint) || '') + '</div>';
+        return;
+      }
+      S.rows = j.rows || [];
+      S.resolved = !!j.splitChars;
+      S.leadTicks = j.leadTicks || 480;
+      // 复选框显示**实际生效**的模式（按语种判断出来的那个）—— 但**不再在旁边写小字**（用户口径）
+      $('split').checked = S.resolved;
+      $('clipName').textContent = j.clipName ? (j.clipName.trim() + (j.clipUuid ? '' : '')) : '';
+      $('dot').className = 'dot on';
+      var rt = S.rows.filter(function (r) { return !r.roundTrip; }).length;
+      $('stat').textContent = j.sentenceCount + ' 句 · ' + j.charCount + ' 字 · 写回走 '
+        + (j.writeMode === 'fill' ? 'ACE 原生填充' : '逐音符') + (rt ? ' · ⚠ ' + rt + ' 行回填不精确' : '');
+      render(j);
+    }
+
+    function render(j) {
+      if (!S.rows.length) {
+        $('list').innerHTML = '<div class="empty">' + esc(j.note || '这一份片段里没有歌词 —— 先在 ACE 里给音符写上歌词') + '</div>';
+        recount();
+        return;
+      }
+      var h = S.rows.map(function (r, i) {
+        return '<div class="ln" data-i="' + i + '">'
+          + '<span class="no">' + (r.index + 1) + '</span>'
+          + '<input class="tx" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(r.text) + '"'
+          + ' title="' + esc(barTip(r)) + '">'
+          + (r.roundTrip ? '' : '<span class="rt" title="回填不精确（多半是某个音符唱着一整串带空格的东西）">⚠</span>')
+          + '<button class="mini play" type="button">试听</button>'
+          + '<button class="mini go" type="button">跳转</button>'
+          + '</div>';
+      }).join('');
+      $('list').innerHTML = h;
+
+      document.querySelectorAll('.ln').forEach(function (ln) {
+        var i = parseInt(ln.getAttribute('data-i'), 10);
+        var box = ln.querySelector('input.tx');
+        box.addEventListener('input', recount);
+        // 回车 / 失焦（change）就**立刻写回这一句** —— 和原侧栏一模一样
+        box.addEventListener('change', function () { commit(S.rows[i], box); });
+        box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { box.blur(); } });
+        ln.querySelector('.play').addEventListener('click', function () { audition(S.rows[i], this); });
+        ln.querySelector('.go').addEventListener('click', function () { gotoCue(S.rows[i], this); });
+      });
+      recount();
+    }
+
+    /** 拍 = tick / 480（⚠️ 单位口径 2026-10-14：对外一律「拍」）。 */
+    function beatsOf(tick) {
+      if (typeof tick !== 'number') return tick;
+      return String(Math.round((tick / 480) * 100) / 100);
+    }
+
+    function barTip(r) {
+      var t = '第 ' + (r.index + 1) + ' 句 · ' + r.noteCount + ' 个音符';
+      if (r.barBeat) t += ' · ' + r.barBeat;
+      t += '\n逐音符：' + (r.noteLyrics || []).join(' | ');
+      // ⚠️ 单位口径（用户 2026-10-14）：对外一律「拍」（1 拍 = 四分音符，480 tick/拍）
+      t += '\n第 ' + beatsOf(r.absBeginTick) + ' – ' + beatsOf(r.absEndTick) + ' 拍';
+      return t;
+    }
+
+    /* ---- 写：改完这一行立刻写回那一句 ---- */
+    async function commit(row, box) {
+      var text = box.value;
+      if (text === row.text) { return; }
+      box.classList.add('busy'); box.classList.remove('ok', 'bad');
+      var d;
+      try {
+        d = await api('lyric.setSentence', {
+          sentence: String(row.index), text: text, mode: 'auto',
+          // ⚠️ 发**已经生效的**那个模式（不是 auto）：这样"看到的行"与"写回去的那串"一定同一条规则
+          splitChars: S.resolved ? 'on' : 'off',
+          ignoreTenuto: S.ignore ? '1' : '0',
+        });
+      } catch (e) {
+        d = { ok: false, hint: e.message };
+      }
+      box.classList.remove('busy');
+      if (d.ok) {
+        row.text = text;
+        box.classList.add('ok');
+        setTimeout(function () { box.classList.remove('ok'); }, 1200);
+        $('dot').className = 'dot on';
+      } else {
+        box.classList.add('bad');
+        $('dot').className = 'dot';
+        $('stat').textContent = '第 ' + (row.index + 1) + ' 句写回失败：' + (d.hint || '看完整面板的命令日志');
+      }
+    }
+
+    /* ---- 跳转：只移播放头，不播 ---- */
+    async function gotoCue(row, btn) {
+      btn.disabled = true;
+      var d = await api('lyric.goto', { sentence: String(row.index), leadSec: '0.5' });
+      btn.disabled = false;
+      if (!d.ok) { $('stat').textContent = '跳转失败：' + (d.hint || ''); return; }
+      $('stat').textContent = '已跳到第 ' + (row.index + 1) + ' 句（句前 0.5 秒）';
+    }
+
+    /* ---- 试听：句前 0.5 秒开始播 → 播到句后 0.5 秒**暂停** ----
+     * ⚠️ 暂停**不在 exe 里 sleep**（一句可能二十秒，会把串行的 CLI 堵住、用户也点不了别的）。
+     *    exe 只负责"定位 + 开始播"，这里数 `transport state` 的 positionTick，
+     *    数到「句尾 + 提前量」就调 `transport.stop`。世代号保证点了别的行之后旧循环立刻作废。
+     */
+    async function audition(row, btn) {
+      stopAudition(false);
+      var g = ++S.audition.gen;
+      S.audition.on = true;
+      btn.classList.add('on');
+      $('dot').className = 'dot play';
+      $('stat').textContent = '试听第 ' + (row.index + 1) + ' 句…';
+      var d = await api('lyric.audition', { sentence: String(row.index), leadSec: '0.5' });
+      if (g !== S.audition.gen) { btn.classList.remove('on'); return; }
+      if (!d.ok) {
+        S.audition.on = false;
+        btn.classList.remove('on');
+        $('dot').className = 'dot';
+        $('stat').textContent = '试听失败：' + (d.hint || '');
+        return;
+      }
+      var until = row.absEndTick + S.leadTicks;   // 播到这里就停
+      var deadline = Date.now() + 90000;
+      while (S.audition.on && g === S.audition.gen) {
+        await sleep(160);
+        if (g !== S.audition.gen) break;
+        var st;
+        try { st = firstJSON(await api('transport.state', {})); } catch (e) { continue; }
+        if (!st) continue;
+        if (st.status === 'stopped') break;                       // 用户自己停了
+        if (st.positionTick >= until) {                           // 到点了 ⇒ 暂停
+          await api('transport.stop', {});
+          $('stat').textContent = '第 ' + (row.index + 1) + ' 句试听结束（句后 0.5 秒已暂停）';
+          break;
+        }
+        if (Date.now() > deadline) break;
+      }
+      S.audition.on = false;
+      btn.classList.remove('on');
+      $('dot').className = 'dot on';
+    }
+
+    function stopAudition(silent) {
+      if (!S.audition.on) return;
+      S.audition.on = false;
+      S.audition.gen++;
+      // 掐掉上一段：问了才停（用户点别的行时，上一段还在播）
+      api('transport.stop', {});
+      if (!silent) $('stat').textContent = '已停止上一段试听';
+      document.querySelectorAll('.mini.play.on').forEach(function (b) { b.classList.remove('on'); });
+    }
+
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function esc(s) {
+      return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    /* ---- 绑定 ---- */
+    load();
+    $('ignore').checked = S.ignore;
+    $('refresh').addEventListener('click', refresh);
+    $('split').addEventListener('change', function () {
+      S.split = $('split').checked ? 'on' : 'off';   // 用户一动就不再是 auto
+      save(); refresh();
+    });
+    $('ignore').addEventListener('change', function () {
+      S.ignore = $('ignore').checked;
+      save(); refresh();
+    });
+    window.addEventListener('beforeunload', function () { stopAudition(true); });
+    refresh();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

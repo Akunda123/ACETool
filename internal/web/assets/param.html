@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>参数映射</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:var(--ok,#5ebd7a)}
+    .msg{font-size:11.5px;color:var(--dim,#9498a0)}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn.on{background:rgba(26,115,232,.2);border-color:var(--accent,#1a73e8);color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:8px 10px 12px}
+    .row{display:flex;align-items:center;gap:8px;margin:6px 0;min-width:0}
+    .row > .lb{flex:0 0 auto;color:var(--dim,#9498a0);font-size:12px;min-width:52px}
+    .row .sp{flex:1}
+    select,input[type=number],input[type=text]{background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      color:var(--fg,#d6dae0);border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;min-width:0}
+    select:focus,input:focus{outline:none;border-color:var(--accent,#1a73e8)}
+    input[type=number]{width:62px;font-variant-numeric:tabular-nums}
+    input:disabled,select:disabled{opacity:.45}
+    label.ck{display:flex;align-items:center;gap:5px;color:var(--fg,#d6dae0);font-size:12px;cursor:pointer}
+    label.ck input{accent-color:var(--accent,#1a73e8)}
+    .segs{display:flex;gap:0;border:1px solid var(--line,#3f434a);border-radius:6px;overflow:hidden}
+    .segs button{border:0;background:transparent;color:var(--fg,#d6dae0);padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+    .segs button + button{border-left:1px solid var(--line,#3f434a)}
+    .segs button.on{background:rgba(26,115,232,.22);color:var(--accent,#1a73e8)}
+    .segs button:disabled{opacity:.4;cursor:default}
+    /* 缩略图（当前片段）：拖动定范围 —— 这块是页面的主角，别被挤扁 */
+    #mmwrap{position:relative;flex:0 0 auto;border:1px solid var(--line,#3f434a);border-radius:6px;overflow:hidden;
+      background:var(--inset,#242830);margin:6px 0}
+    #mm{display:block;width:100%;height:118px;touch-action:none;cursor:crosshair}
+    .sec{border-top:1px solid var(--line,#3f434a);margin-top:8px;padding-top:2px}
+    .sec > .hd{color:var(--dim,#9498a0);font-size:11.5px;margin:6px 0 2px}
+    #rep{white-space:pre-wrap;word-break:break-word;background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      border-radius:6px;padding:6px 8px;font-size:11.5px;color:var(--dim,#9498a0);max-height:34vh;overflow:auto}
+    #rep.ok{color:var(--ok,#5ebd7a)}
+    #rep.bad{color:var(--bad,#e06c75)}
+    #rep b{color:var(--fg,#d6dae0)}
+    .hide{display:none !important}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>参数映射</h1>
+    <span class="dot" id="dot"></span>
+    <span class="msg" id="stat">读取中…</span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <!-- ① 范围：全 clip / 所选音符 / 指定（拖动缩略图 + 两个小节框，精确到小节） -->
+    <div class="row">
+      <span class="lb">范围</span>
+      <div class="segs" id="segs">
+        <button type="button" data-r="clip">全 clip</button>
+        <button type="button" data-r="sel">所选音符</button>
+        <button type="button" data-r="bars">指定</button>
+      </div>
+      <span class="sp"></span>
+      <label class="ck" title="小节号从 1 起；拖动上面那张图也会改这两个框">第
+        <input type="number" id="b1" min="1" step="1" autocomplete="off"> – <input type="number" id="b2" min="1" step="1" autocomplete="off"> 小节</label>
+    </div>
+    <div id="mmwrap"><canvas id="mm"></canvas></div>
+    <div class="msg" id="rangeInfo"></div>
+
+    <div class="sec">
+      <div class="hd">复制内容（源参数 → 目标参数）</div>
+      <div class="row">
+        <select id="src" style="flex:1 1 0" autocomplete="off"></select>
+        <span class="lb" style="min-width:auto">→</span>
+        <select id="dst" style="flex:1 1 0" autocomplete="off"></select>
+      </div>
+      <div class="row" id="modeRow">
+      <span class="lb">计算方式</span>
+      <select id="mode">
+        <option value="add" selected>叠加（新值 = 目标值 + 倍率 × 源值 + 偏移）</option>
+        <option value="overwrite">覆盖（新值 = 倍率 × 源值 + 偏移，不看目标原值）</option>
+      </select>
+      <label class="ck" title="先把源值按两侧参数的值域线性缩放，再套公式（叠加/覆盖都适用）">
+        <input type="checkbox" id="pMapRange" autocomplete="off"> 按值域换算</label>
+    </div>
+    <div class="row" id="srcLayerRow">
+        <span class="lb">源读哪一层</span>
+        <select id="srcLayer">
+          <option value="auto">自动（包络优先，没有包络才用实参）</option>
+          <option value="envelope">包络（乘数层）</option>
+          <option value="effective">实参（合并后的绝对值）</option>
+        </select>
+      </div>
+      <div class="row" id="layerRow">
+        <span class="lb">写进</span>
+        <span id="layers" style="display:flex;gap:14px;flex-wrap:wrap"></span>
+      </div>
+      <div class="row">
+        <span class="lb">数值</span>
+        <label class="ck" title="不同参数：新值 = 目标值 + 倍率 × 源值 + 偏移；同一参数：新值 = 倍率 × 目标值 + 偏移">倍率
+          <input type="number" id="scale" step="0.1" value="1" autocomplete="off"></label>
+        <label class="ck">偏移
+          <input type="number" id="offset" step="0.1" value="0" autocomplete="off"></label>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="row">
+        <label class="ck" title="不通过的**采样点保持原值**（空档保持空档）">
+          <input type="checkbox" id="fOn"> 开启筛选</label>
+      </div>
+      <!-- ⚠️ 不开筛选时**整块藏起来**（用户口径）；条件2同理，选了「无」就不显示 -->
+      <div id="f1" class="hide">
+        <div class="row">
+          <span class="lb">条件 1</span>
+          <select id="fOp" autocomplete="off">
+            <option value="gt">源值 &gt;</option>
+            <option value="lt">源值 ≤</option>
+          </select>
+          <input type="number" id="fVal" step="0.1" value="0" autocomplete="off">
+        </div>
+      </div>
+      <div id="f2wrap" class="hide">
+        <div class="row">
+          <span class="lb">关系</span>
+          <select id="f2Mode" autocomplete="off">
+            <option value="none">不用第二段</option>
+            <option value="and">与条件 1 且</option>
+            <option value="or">与条件 1 或</option>
+          </select>
+        </div>
+      </div>
+      <div id="f2" class="hide">
+        <div class="row">
+          <span class="lb">条件 2</span>
+          <select id="f2Op" autocomplete="off">
+            <option value="gt">源值 &gt;</option>
+            <option value="lt">源值 ≤</option>
+          </select>
+          <input type="number" id="f2Val" step="0.1" value="0" autocomplete="off">
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="prev" type="button">预览</button>
+      <button class="btn" id="run" type="button">执行</button>
+      <span class="msg">执行会进 ACE 撤销栈 ⇒ 顶栏「撤回这一批」可一次退回</span>
+    </div>
+    <div id="rep">还没跑。</div>
+  </div>
+
+  <script src="canvasmap.js"></script>
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    var LS = 'acetool.param';
+
+    // 层的显示名与**显示顺序**：用户 2026-10-07 的口径 —— 包络在前、真值在后
+    var LAYER_NAME = { envelope: '包络', direct: '真值', user: 'user', baseline: 'baseline', global: 'global' };
+    var LAYER_ORDER = ['envelope', 'direct', 'user', 'global'];
+
+    var S = {
+      view: null,        // param.view 的那一包
+      range: 'clip',     // clip | sel | bars
+      b1: 1, b2: 1,      // 指定范围的两个小节（1 起，含两端）
+      drag: null,        // 正在拖：按下那一小节的号（锚点）
+      fixedLayers: [],   // 「写进」那一行**隐藏**时固定用的层（v2 只有 user）
+      busy: false,
+    };
+
+    function load() {
+      try { var j = JSON.parse(localStorage.getItem(LS) || '{}'); if (j.range) S.range = j.range; } catch (e) { }
+    }
+    function save() {
+      localStorage.setItem(LS, JSON.stringify({ range: S.range }));
+    }
+
+    async function call(toolId, values) {
+      var r = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      return r.json();
+    }
+
+    /** 拍 = tick / 480（⚠️ 单位口径 2026-10-14：对外一律「拍」，tick 只进内部计算）。 */
+    function beats2(tick) {
+      if (typeof tick !== 'number') return tick;
+      return String(Math.round((tick / 480) * 100) / 100);
+    }
+    /** 当前范围 → 片段内 tick（与 Go 侧 `barSpan` 同一套算法，页面上只用于**画**）。 */
+    function rangeTicks() {
+      var v = S.view;
+      if (!v) return { lo: 0, hi: 0, ok: false, why: '' };
+      var tpb = v.ticksPerBar || 1920;
+      if (S.range === 'sel') {
+        if (!v.hasSelection) return { lo: 0, hi: 0, ok: false, why: 'ACE 里没选中音符 —— 选上，或换「全 clip」/「指定」' };
+        return { lo: v.selBegin, hi: v.selEnd, ok: true, why: '' };
+      }
+      if (S.range === 'bars') {
+        var lo = (S.b1 - 1) * tpb - v.clipBegin, hi = S.b2 * tpb - v.clipBegin;
+        if (lo < 0) lo = 0;
+        if (hi > v.clipTicks) hi = v.clipTicks;
+        if (lo >= hi) return { lo: 0, hi: 0, ok: false, why: '第 ' + S.b1 + '–' + S.b2 + ' 小节落在片段之外' };
+        return { lo: lo, hi: hi, ok: true, why: '' };
+      }
+      return { lo: 0, hi: v.clipTicks, ok: true, why: '' };
+    }
+
+    function tickOf(x, cssW) {
+      var v = S.view, pad = 8, w = Math.max(1, cssW - pad * 2);
+      var t = (x - pad) / w * v.clipTicks;
+      return Math.max(0, Math.min(v.clipTicks, Math.round(t)));
+    }
+    function barAt(x, cssW) {
+      var v = S.view, tpb = v.ticksPerBar || 1920;
+      return Math.floor((tickOf(x, cssW) + v.clipBegin) / tpb) + 1;
+    }
+
+    /* ---------- 缩略图：当前 clip（音符按音高摆高）+ 小节线 + 范围遮罩 ---------- */
+    var MM = null;
+    var MM = null;
+        // 读不到数据时把画布画成一句话（否则它停在默认 300x150，看着像坏了）
+    function mmEmpty(msg) {
+      try {
+        var el = document.getElementById('mm');
+        if (!el || !window.CanvasMap || !CanvasMap.draw) return;
+        CanvasMap.draw(el, null, { emptyText: msg });
+      } catch (e) { }
+    }
+
+    function draw() {
+      var v = S.view, el = $('mm');
+      if (!el) return;
+      if (!v || !window.CanvasMap) return;
+      var cl = { uuid: v.clipUuid, clipIndex: v.clipIndex, name: v.clipName,
+        begin: v.clipBegin, end: v.clipEnd, notes: v.notes || [], minPitch: v.minPitch, maxPitch: v.maxPitch };
+      var rt = rangeTicks();
+      MM = window.CanvasMap.draw(el, {
+        durationTick: v.clipEnd || 0, ticksPerBar: v.ticksPerBar || 1920,
+        tracks: [{ trackIndex: v.trackIndex, name: v.clipName, clips: [cl] }],
+      }, {
+        row: 66, hi: [v.trackIndex],
+        picks: (rt && rt.ok && rt.hi > rt.lo)
+          ? [{ begin: v.clipBegin + rt.lo, end: v.clipBegin + rt.hi }] : [],
+      });
+    }
+
+    function mmDrag(ev) {
+      var c = $('mm'), cssW = c.clientWidth || 560;
+      var r = c.getBoundingClientRect();
+      var bar = barAt(ev.clientX - r.left, cssW);
+      var tpb = (S.view && S.view.ticksPerBar) || 1920;
+      var maxBar = Math.max(1, Math.ceil(((S.view ? S.view.clipTicks : 1) + (S.view ? S.view.clipBegin : 0)) / tpb));
+      bar = Math.max(1, Math.min(maxBar, bar));
+      if (!S.drag) { S.range = 'bars'; S.drag = bar; }   // 按下的那一小节 = 锚点
+      // ⚠️ 一次拖动**定义一整段**（按下点 → 当前位置），不是"拖某一头"：
+      // 拖某一头时若越过另一头会被夹住（实测：从第 1 小节拖到第 2 小节卡成 1–1）。
+      S.b1 = Math.min(S.drag, bar);
+      S.b2 = Math.max(S.drag, bar);
+      render();
+    }
+
+    /* ---------- 渲染 ---------- */
+    function render() {
+      var v = S.view;
+      if (!v) return;
+      // 段落按钮
+      document.querySelectorAll('#segs button').forEach(function (b) {
+        var on = b.getAttribute('data-r') === S.range;
+        b.className = on ? 'on' : '';
+        b.disabled = (b.getAttribute('data-r') === 'sel') && !v.hasSelection;
+      });
+      var editable = S.range === 'bars';
+      $('b1').disabled = !editable; $('b2').disabled = !editable;
+      $('b1').value = S.b1; $('b2').value = S.b2;
+
+      var rt = rangeTicks();
+      var tpb = v.ticksPerBar || 1920;
+      // ⚠️ 单位口径（用户 2026-10-14）：对外一律「拍」（1 拍 = 四分音符 = 480 tick）
+      var info = '片段「' + v.clipName + '」· ' + beats2(v.clipTicks) + ' 拍 / ' + v.clipBars + ' 小节 · ' + (v.meter || '?') +
+        ' · 引擎 ' + (v.engineGeneration || '?');
+      if (rt.ok) {
+        var barA = Math.floor((rt.lo + v.clipBegin) / tpb) + 1, barB = Math.floor((rt.hi - 1 + v.clipBegin) / tpb) + 1;
+        info += '\n范围：片段内第 ' + beats2(rt.lo) + '–' + beats2(rt.hi) + ' 拍（' + beats2(rt.hi - rt.lo) + ' 拍 · 第 ' + barA + '–' + barB + ' 小节）';
+      } else {
+        info += '\n⚠️ ' + rt.why;
+      }
+      $('rangeInfo').textContent = info;
+      $('stat').textContent = (v.engineGeneration || '?') + ' · ' + v.clipBars + ' 小节';
+      $('dot').className = 'dot on';
+
+      draw();
+      renderLayers();
+      $('prev').disabled = $('run').disabled = S.busy || !rt.ok;
+    }
+
+    function paramList() {
+      var v = S.view, out = [];
+      (v.params || []).forEach(function (p) { if (p.available) out.push(p); });
+      return out;
+    }
+    function paramOf(name) {
+      var v = S.view, hit = null;
+      (v.params || []).forEach(function (p) { if (p.param === name) hit = p; });
+      return hit;
+    }
+
+    function fillSelects() {
+      var list = paramList(), src = $('src'), dst = $('dst');
+      var keepS = src.value, keepD = dst.value;
+      var html = list.map(function (p) { return '<option value="' + p.param + '">' + (p.displayName || p.param) + '</option>'; }).join('');
+      src.innerHTML = html; dst.innerHTML = html;
+      var names = list.map(function (p) { return p.param; });
+      src.value = names.indexOf(keepS) >= 0 ? keepS : (names.indexOf('tension') >= 0 ? 'tension' : names[0]);
+      dst.value = names.indexOf(keepD) >= 0 ? keepD : (names.indexOf('energy') >= 0 ? 'energy' : names[0]);
+    }
+
+    /** 「写进哪一层」：**只有一代（v1）才有这一行**（包络/真值可多选，包络在前、默认勾上）。
+     *  v2（`singing-mamba`）只有 `user` 一层可写 ⇒ **整行隐藏**（用户 2026-10-07：
+     *  「V2的这一整段隐藏」）—— 没得选的东西不该占一行、更不该写一句解释。
+     *  ⚠️ 隐藏时**不能就不发 layers**：那样会落到 Go 侧的默认推导（v2 恰好也是 user，但别靠巧合）——
+     *  这里把该参数的可写层直接固定下来发过去。 */
+    function renderLayers() {
+      var dst = paramOf($('dst').value), box = $('layers'), row = $('layerRow');
+      S.fixedLayers = [];
+      if (!dst) { box.innerHTML = ''; row.hidden = true; return; }
+      var wr = (dst.writableLayers || []).slice().sort(function (a, b) {
+        var ia = LAYER_ORDER.indexOf(a), ib = LAYER_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      });
+      // 有"包络/真值"这类**要选**的层才显示这一行
+      var choosable = wr.indexOf('envelope') >= 0 || wr.indexOf('direct') >= 0;
+      if (!choosable) {
+        box.innerHTML = '';
+        row.hidden = true;
+        S.fixedLayers = wr.slice();   // 只有一层（如 user）⇒ 固定用它，照样发出去
+        return;
+      }
+      row.hidden = false;
+      var checked = {};
+      box.querySelectorAll('input[data-l]').forEach(function (i) { checked[i.getAttribute('data-l')] = i.checked; });
+      box.innerHTML = wr.map(function (l) {
+        // ⭐ 用户 2026-10-07：**包络默认勾选、真值默认不勾**（包络是乘数层、相对改动更温和；
+        // 真值是绝对覆盖，误写下去动静大）。
+        var on = (checked[l] === undefined) ? (l === 'envelope' || wr.length === 1) : checked[l];
+        return '<label class="ck" title="' + (l === 'envelope' ? '乘数层（围绕 1.0）' : l === 'direct' ? '绝对覆盖层' : '') + '">' +
+          '<input type="checkbox" data-l="' + l + '" autocomplete="off"' + (on ? ' checked' : '') + '>' + (LAYER_NAME[l] || l) + '</label>';
+      }).join('');
+    }
+
+    function pickedLayers() {
+      if ($('layerRow').hidden) return S.fixedLayers || [];
+      var out = [];
+      $('layers').querySelectorAll('input[data-l]').forEach(function (i) { if (i.checked) out.push(i.getAttribute('data-l')); });
+      return out;
+    }
+
+    function values(dry) {
+      var v = { srcParam: $('src').value, dstParam: $('dst').value, layers: pickedLayers().join(','),
+        srcLayer: ($('srcLayer') || {}).value || 'auto',
+        mode: ($('mode') || {}).value || 'add',
+        mapRange: $('pMapRange').checked ? '1' : '0',
+        scale: $('scale').value, offset: $('offset').value, range: S.range };
+      if (S.range === 'bars') { v.beginBar = String(S.b1); v.endBar = String(S.b2); }
+      if ($('fOn').checked) {
+        v.filter = $('fOp').value; v.filterValue = $('fVal').value;
+        if ($('f2Mode').value !== 'none') {
+          v.filter2 = $('f2Mode').value; v.filter2Mode = $('f2Op').value; v.filter2Value = $('f2Val').value;
+        }
+      } else {
+        v.filter = 'off';
+      }
+      v.dryRun = dry ? '1' : '0';
+      return v;
+    }
+
+    function showReport(d, dry) {
+      var el = $('rep'), j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+      if (!d.ok || !j) {
+        el.className = 'bad'; el.textContent = '失败：' + (d.hint || '看主面板的命令日志'); return;
+      }
+      if (j.note && !j.ticks) { el.className = 'bad'; el.textContent = j.note; return; }
+      // ⚠️ 写失败时工具仍是 ok=true、只是 note 里写"写 … 层失败"（前面层不回滚）⇒ 必须标红，
+      // 别显示成"已执行"（2026-10-22 用户反馈"看不到实际执行"就是这一条把失败画成了成功）。
+      if (j.note && String(j.note).indexOf('失败') >= 0) { el.className = 'bad'; el.textContent = j.note; return; }
+      var changed = 0, filtered = 0, clamped = 0, nosrc = 0, drawn = 0;
+      (j.perLayer || []).forEach(function (r) {
+        changed += r.ticksChanged; filtered += r.ticksFilteredOut;
+        clamped += r.ticksClamped; nosrc += r.ticksNoSource; drawn += r.ticksDrawnBefore;
+      });
+      var L = [];
+      L.push((dry ? '预览（只看会改什么，不写）' : '已执行') + '：' + j.srcParam + '（' + j.srcFrom + '）→ ' + j.dstParam +
+        ' 的 ' + (j.layers || []).join(' + ') + '，' + beats2(j.ticks) + ' 拍');
+      L.push('会改 ' + changed + ' 个' + (filtered ? ' · 筛掉 ' + filtered : '') +
+        (nosrc ? ' · 源上没值 ' + nosrc : '') + (clamped ? ' · 夹边界 ' + clamped : ''));
+      var fml, mapNote = ($('pMapRange').checked ? ' · 源值已按值域换算' : '');
+      if (j.mode === 'normalize') {
+        fml = '按值域换算：源值域 → 目标值域线性缩放，再 × ' + j.scaleFactor + ' + ' + j.offset;
+      } else if (j.mode === 'overwrite') {
+        fml = '覆盖：新值 = ' + j.scaleFactor + ' × 源值 + ' + j.offset;
+      } else if (j.sameParam) {
+        fml = '叠加（同一参数）：新值 = ' + j.scaleFactor + ' × 目标值 + ' + j.offset;
+      } else {
+        fml = '叠加：新值 = 目标值 + ' + j.scaleFactor + ' × 源值 + ' + j.offset;
+      }
+      L.push('公式（' + (j.mode === 'overwrite' ? '覆盖' : '叠加') + '）' + fml.replace(/^[^：]*：/, '：') + mapNote +
+        '   （目标值域 ' + j.dstValueMin + '..' + j.dstValueMax + '）');
+      if (drawn === 0) L.push('⚠️ 目标层这一段本来就是**整段没画** ⇒ 写下去等于把它变成显式覆盖。');
+      L.push('样本：' + (j.sampleAfter || []).slice(0, 4).map(function (x) { return x === null ? '空档' : Number(x).toFixed(3); }).join(', ') + ' …');
+      if (!dry) L.push('✅ 改完了 —— 不满意就按主面板顶栏的「撤回这一批」。');
+      el.className = 'ok';
+      el.textContent = L.join('\n');
+    }
+
+    async function fire(dry) {
+      if (S.busy) return;
+      var rt = rangeTicks();
+      if (!rt.ok) { $('rep').className = 'bad'; $('rep').textContent = rt.why; return; }
+      if (!pickedLayers().length) { $('rep').className = 'bad'; $('rep').textContent = '至少勾一个「写进哪一层」'; return; }
+      S.busy = true; render();
+      $('rep').className = ''; $('rep').textContent = dry ? '预览中…' : '执行中…';
+      try {
+        var d = await call('param.sync', values(dry));
+        showReport(d, dry);
+      } catch (e) {
+        $('rep').className = 'bad'; $('rep').textContent = '请求失败：' + e.message;
+      } finally {
+        S.busy = false; render();
+      }
+    }
+
+    /* ---------- 接线 ---------- */
+    load();
+    $('refresh').addEventListener('click', function () { boot(); });
+    document.querySelectorAll('#segs button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        S.range = b.getAttribute('data-r');
+        if (S.range === 'bars' && S.view) {
+          // 切到「指定」时：把当前算出来的范围**反算成小节**填进两个框（不跳回 1–1）
+          var rt = rangeTicks(), tpb = S.view.ticksPerBar || 1920;
+          if (rt.ok) {
+            S.b1 = Math.floor((rt.lo + S.view.clipBegin) / tpb) + 1;
+            S.b2 = Math.floor((rt.hi - 1 + S.view.clipBegin) / tpb) + 1;
+          }
+        }
+        save(); render();
+      });
+    });
+    $('b1').addEventListener('change', function () {
+      var v = parseInt($('b1').value, 10); if (v >= 1) { S.b1 = v; if (S.b2 < S.b1) S.b2 = S.b1; }
+      render();
+    });
+    $('b2').addEventListener('change', function () {
+      var v = parseInt($('b2').value, 10); if (v >= 1) { S.b2 = v; if (S.b1 > S.b2) S.b1 = S.b2; }
+      render();
+    });
+    $('mm').addEventListener('pointerdown', function (ev) { $('mm').setPointerCapture(ev.pointerId); mmDrag(ev); });
+    $('mm').addEventListener('pointermove', function (ev) { if (S.drag) mmDrag(ev); });
+    $('mm').addEventListener('pointerup', function (ev) { S.drag = null; render(); });
+    $('mm').addEventListener('pointercancel', function () { S.drag = null; render(); });
+    window.addEventListener('resize', draw);
+    $('src').addEventListener('change', function () { render(); });
+    $('dst').addEventListener('change', function () { renderLayers(); render(); });
+    $('fOn').addEventListener('change', function () {
+      var on = $('fOn').checked;
+      $('f1').className = on ? '' : 'hide';
+      $('f2wrap').className = on ? '' : 'hide';
+      $('f2').className = (on && $('f2Mode').value !== 'none') ? '' : 'hide';
+    });
+    $('f2Mode').addEventListener('change', function () {
+      $('f2').className = ($('fOn').checked && $('f2Mode').value !== 'none') ? '' : 'hide';
+    });
+    $('prev').addEventListener('click', function () { fire(true); });
+    $('run').addEventListener('click', function () { fire(false); });
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      try {
+        var d = await call('param.view', {});
+        var v = (d.calls && d.calls[0] && d.calls[0].json) || null;
+        if (!d.ok || !v) throw new Error(d.hint || '拿不到当前片段');
+        S.view = v;
+        // 指定范围的两个小节框：默认给**整个片段**盖住的那几小节
+        var tpb = v.ticksPerBar || 1920;
+        S.b1 = Math.floor(v.clipBegin / tpb) + 1;
+        S.b2 = Math.floor((v.clipBegin + v.clipTicks - 1) / tpb) + 1;
+        fillSelects();
+        $('layers').innerHTML = '';
+        renderLayers();
+        render();
+        $('rep').className = '';
+        $('rep').textContent = '还没跑。';
+      } catch (e) {
+        $('stat').textContent = '读取失败：' + e.message;
+        mmEmpty('ACE 没开或读取失败 —— 打开 ACE 后点「刷新」');
+        $('dot').className = 'dot';
+      }
+    }
+    boot();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

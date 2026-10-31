@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>轨内复制</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:var(--ok,#5ebd7a)}
+    .msg{font-size:11.5px;color:var(--dim,#9498a0)}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:8px 10px 12px}
+    .row{display:flex;align-items:center;gap:8px;margin:6px 0;min-width:0}
+    .row > .lb{flex:0 0 auto;color:var(--dim,#9498a0);font-size:12px;min-width:38px}
+    input[type=number]{background:var(--inset,#242830);border:1px solid var(--line,#3f434a);color:var(--fg,#d6dae0);
+      border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;width:64px;font-variant-numeric:tabular-nums;min-width:0}
+    input:focus{outline:none;border-color:var(--accent,#1a73e8)}
+    label.ck{display:flex;align-items:center;gap:5px;color:var(--fg,#d6dae0);font-size:12px;cursor:pointer}
+    label.ck input{accent-color:var(--accent,#1a73e8)}
+    #mmwrap{position:relative;flex:0 0 auto;border:1px solid var(--line,#3f434a);border-radius:6px;overflow:hidden;
+      background:var(--inset,#242830);margin:6px 0}
+    #mm{display:block;width:100%;height:132px;touch-action:none;cursor:crosshair}
+    .legend{display:flex;gap:14px;align-items:center;font-size:11.5px;color:var(--dim,#9498a0)}
+    .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+    #rep{white-space:pre-wrap;word-break:break-word;background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      border-radius:6px;padding:6px 8px;font-size:11.5px;color:var(--dim,#9498a0);max-height:38vh;overflow:auto}
+    #rep.ok{color:var(--ok,#5ebd7a)}
+    #rep.bad{color:var(--bad,#e06c75)}
+    #rep b{color:var(--fg,#d6dae0)}
+    /* ⭐ 参数表（用户 2026-10-07「参数展开…v1 就实参和包络两列」）：每行一个参数、每列一条曲线 */
+    .ptab{border-collapse:collapse;margin:6px 0 2px;font-size:12px}
+    .ptab th,.ptab td{border:1px solid var(--line,#3f434a);padding:2px 10px;text-align:center;color:var(--fg,#d6dae0)}
+    .ptab th{color:var(--dim,#9498a0);font-weight:500;background:var(--panel,#2f333a);font-size:11.5px}
+    .ptab th .dst{display:block;font-size:10.5px;color:var(--dim,#9498a0);font-weight:400}
+    .ptab td.pname,.ptab th.pname{text-align:left;font-variant-numeric:tabular-nums}
+    .ptab td.na{color:var(--dim,#9498a0)}
+    .ptab input{accent-color:var(--accent,#1a73e8)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>轨内复制</h1>
+    <span class="dot" id="dot"></span>
+    <span class="msg" id="stat">读取中…</span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <!-- 三个小节号：源范围两种色框、目标范围另一种（都在下面那张图上画出来） -->
+    <div class="row" id="bars">
+      <span class="lb" title="1 起；可带小数（1.5 = 第 1 小节一半处）">源</span>
+      <input type="number" id="s1" min="1" step="1" autocomplete="off">
+      <span class="msg">→</span>
+      <input type="number" id="s2" min="1" step="1" autocomplete="off">
+      <span class="msg">小节</span>
+      <span class="lb" style="margin-left:10px">目标</span>
+      <input type="number" id="d1" min="1" step="1" autocomplete="off">
+      <span class="msg">小节起（同长）</span>
+      <span class="lb" style="margin-left:10px" title="两段音符起点常有几 tick 的量化差；起点差在这之内算同一个音">配对阈值</span>
+      <input type="number" id="tol" min="0" step="1" value="30" autocomplete="off" style="width:80px">
+      <span class="msg">tick</span>
+    </div>
+
+    <div id="mmwrap"><canvas id="mm"></canvas></div>
+    <div class="row legend">
+      <span><i style="background:#1a73e8"></i>源范围</span>
+      <span><i style="background:#d9a441"></i>目标范围（与源同长）</span>
+      <span class="sp"></span>
+      <span>在图上拖 = 拉源范围；直接拖目标框 = 挪目标起点</span>
+    </div>
+    <div class="msg" id="rangeInfo"></div>
+
+    <div class="row" style="margin-top:8px">
+      <span class="lb">复制</span>
+      <label class="ck"><input type="checkbox" id="lyrics" checked autocomplete="off"> 歌词</label>
+      <label class="ck"><input type="checkbox" id="pitch" checked autocomplete="off"> 音高</label>
+      <label class="ck" title="写音素会把那个音符的发音冻结成 override（逐音符一笔）">
+        <input type="checkbox" id="phon" checked autocomplete="off"> 音素</label>
+      <label class="ck" title="note resize：把目标音符拉成源那个长度（可能改变分句）">
+        <input type="checkbox" id="dur" autocomplete="off"> 时值</label>
+      <label class="ck" title="phoneme set-consonant-timing：逐音符逐辅音一笔（v1 模型才有辅音时长）">
+        <input type="checkbox" id="cons" autocomplete="off"> 辅音时长</label>
+    </div>
+    <div class="row">
+      <label class="ck" title="勾上就展开下面的参数表：**逐参数逐列**勾选（v1 = 包络/真值两列，v2 = 只有真值一列）。dynamic 的锚点也算参数曲线的一部分，勾这里就一起搬">
+        <input type="checkbox" id="params" autocomplete="off"> 参数曲线</label>
+    </div>
+    <!-- 参数表：行 = 花名册里所有**能逐 tick 写**的参数；列 = `xcopy.view` 的 paramColumns（按目标花名册推） -->
+    <div id="ptWrap" hidden>
+      <!-- ⚠️ 用户 2026-10-22：「轨道内复制不应该有跨世代的选项，轨道都是同一个声库」——
+           同一轨上的片段必然同一引擎世代 ⇒ 「按值域换算 / 允许跨代」两项**去掉**，
+           参数表回到同代语义：实参归实参、包络归包络，各搬自己画过的点。 -->
+      <table class="ptab" id="ptab"></table>
+      <div class="msg" id="ptHint"></div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="prev" type="button">预览</button>
+      <button class="btn" id="run" type="button">执行</button>
+      <span class="msg">只改目标范围里已经存在的音符（按位置配对，不新建）；执行可被顶栏「撤回这一批」退回</span>    </div>
+    <div id="rep">还没跑。</div>
+  </div>
+
+  <script src="canvasmap.js"></script>
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    /** 拍 = tick / 480（⚠️ 单位口径 2026-10-14：对外一律「拍」，tick 只进内部计算）。 */
+    function beatOf(tick) {
+      if (typeof tick !== 'number') return tick;
+      return String(Math.round((tick / 480) * 100) / 100);
+    }
+    var LS = 'acetool.within';
+
+    var S = {
+      view: null,
+      s1: 1, s2: 3, d1: 5,          // 小节号（1 起）
+      drag: null,                   // 'src' 锚点小节 | 'dst' 偏移（小节）
+      exact: null,                  // 预览回包里的精确 tick（画框优先用它）
+      busy: false,
+    };
+
+    function load() {
+      try {
+        var j = JSON.parse(localStorage.getItem(LS) || '{}');
+        if (j.s1) S.s1 = j.s1; if (j.s2) S.s2 = j.s2; if (j.d1) S.d1 = j.d1;
+      } catch (e) { }
+    }
+    function save() { localStorage.setItem(LS, JSON.stringify({ s1: S.s1, s2: S.s2, d1: S.d1 })); }
+
+    async function call(toolId, values) {
+      var r = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      return r.json();
+    }
+
+    /** 小节号 → 工程 tick（**只用来画**；真换算在 Go 侧走 `convert measure-to-tick`，变拍号也对）。 */
+    function barToTick(bar) {
+      var v = S.view, tpb = (v && v.ticksPerBar) || 1920;
+      return Math.round((bar - 1) * tpb);
+    }
+    function tickToBar(tick) {
+      var v = S.view, tpb = (v && v.ticksPerBar) || 1920;
+      return Math.floor(tick / tpb) + 1;
+    }
+    /** 画框用的两段工程 tick 范围：预览过就用**精确值**（Go 侧现读的小节线），否则按等拍号估算。 */
+    function spans() {
+      var v = S.view;
+      if (!v) return null;
+      if (S.exact) return S.exact;
+      var a = barToTick(S.s1), b = barToTick(S.s2), d = barToTick(S.d1);
+      return { srcAbs: a, srcEndAbs: b, dstAbs: d, dstEndAbs: d + (b - a) };
+    }
+
+    var MM = null;   // minimap.js 的几何
+    var MM = null;
+        // 读不到数据时把画布画成一句话（否则它停在默认 300x150，看着像坏了）
+    function mmEmpty(msg) {
+      try {
+        var el = document.getElementById('mm');
+        if (!el || !window.CanvasMap || !CanvasMap.draw) return;
+        CanvasMap.draw(el, null, { emptyText: msg });
+      } catch (e) { }
+    }
+
+    function draw() {
+      var v = S.view, el = $('mm');
+      if (!el) return;
+      if (!v || !window.CanvasMap) return;
+      var clips = (v.clips || []).map(function (cl) {
+        return { uuid: cl.uuid, clipIndex: cl.clipIndex, name: cl.name, begin: cl.begin, end: cl.end,
+          notes: cl.notes || [], minPitch: cl.minPitch, maxPitch: cl.maxPitch };
+      });
+      var sp = spans();
+      MM = window.CanvasMap.draw(el, {
+        durationTick: v.durationTick || 0, ticksPerBar: v.ticksPerBar || 1920,
+        tracks: [{ trackIndex: v.trackIndex, name: v.trackName, clips: clips }],
+      }, {
+        row: 66, hi: [v.trackIndex],
+        picks: sp ? [
+          { begin: sp.srcAbs, end: sp.srcEndAbs, color: 'rgba(26,115,232,.34)', stroke: '#1a73e8' },
+          { begin: sp.dstAbs, end: sp.dstEndAbs, color: 'rgba(217,164,65,.34)', stroke: '#d9a441' },
+        ] : [],
+      });
+      S.boxes = sp ? { src: [MM.X(sp.srcAbs), MM.X(sp.srcEndAbs)], dst: [MM.X(sp.dstAbs), MM.X(sp.dstEndAbs)] } : null;
+    }
+
+    function drawBox(g, X, top, bot, a, b, fill, stroke) {
+      var x0 = X(a), x1 = X(b);
+      g.fillStyle = fill;
+      g.fillRect(x0, top, Math.max(1, x1 - x0), bot - top);
+      g.strokeStyle = stroke; g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(x0 + .5, top); g.lineTo(x0 + .5, bot);
+      g.moveTo(x1 - .5, top); g.lineTo(x1 - .5, bot);
+      g.stroke(); g.lineWidth = 1;
+    }
+
+    /** 本地先算一遍「源几个、目标几个、按位置能配上几个」—— 与 Go 侧 `matchByOnset` **同一判据**
+     *  （源和目标各自减去自己范围的起点后，位置相等即配对），这样不等预览就能看出"这趟会不会白跑"。
+     *  ⭐ 2026-10-07 用户口径「**作用于轨内所有 clip，遍历绝对时间**」⇒ 这里也换成
+     *  **整条轨的所有片段**、音符位置一律换成**工程绝对** tick（旧版只看当前那一个片段）。 */
+    function liveCounts() {
+      var v = S.view, sp = spans();
+      if (!v || !sp) return null;
+      var lo0 = sp.srcAbs, hi0 = sp.srcEndAbs, lo1 = sp.dstAbs, hi1 = sp.dstEndAbs;
+      var notes = [];
+      (v.clips || []).forEach(function (cl) {
+        // 绝对位置 = 片段起点 + 片段内 pos
+        (cl.notes || []).forEach(function (n) { notes.push({ pos: cl.begin + n.pos }); });
+      });
+      var src = notes.filter(function (n) { return n.pos >= lo0 && n.pos <= hi0; });
+      var dst = notes.filter(function (n) { return n.pos >= lo1 && n.pos <= hi1; });
+      // 带阈值的贪心配对（与 Go 侧 matchByOnsetTol 同口径：起点差 ≤ tol 即同一个音）
+      var tol = parseInt(($('tol') || {}).value, 10);
+      if (isNaN(tol) || tol < 0) tol = 30;
+      var dpos = dst.map(function (n) { return n.pos - lo1; }).sort(function (a, b) { return a - b; });
+      var used = new Array(dpos.length).fill(false);
+      var matched = 0;
+      src.map(function (n) { return n.pos - lo0; }).sort(function (a, b) { return a - b; }).forEach(function (k) {
+        var lo = 0, hi = dpos.length - 1, best = -1;
+        while (lo <= hi) {
+          var mid = (lo + hi) >> 1;
+          if (dpos[mid] < k) { lo = mid + 1; } else { hi = mid - 1; }
+        }
+        var cands = [lo - 1, lo];
+        var bestOff = 1e9;
+        cands.forEach(function (i) {
+          if (i < 0 || i >= dpos.length || used[i]) return;
+          var off = Math.abs(dpos[i] - k);
+          if (off <= tol && off < bestOff) { bestOff = off; best = i; }
+        });
+        if (best >= 0) { used[best] = true; matched++; }
+      });
+      return { src: src.length, dst: dst.length, matched: matched, srcOnly: src.length - matched, dstOnly: dst.length - matched };
+    }
+
+    function render() {
+      var v = S.view;
+      if (!v) return;
+      $('s1').value = S.s1; $('s2').value = S.s2; $('d1').value = S.d1;
+      var nClips = (v.clips || []).length;
+      var nNotes = 0;
+      (v.clips || []).forEach(function (cl) { nNotes += (cl.noteCount || (cl.notes || []).length); });
+      $('stat').textContent = '轨 ' + v.trackIndex + (v.trackName ? '「' + v.trackName + '」' : '') +
+        ' · ' + (v.meter || '?') + ' · ' + nClips + ' 个片段';
+      $('dot').className = 'dot on';
+      var sp = spans();
+      // ⭐ 说清作用域：**整条轨**（所有片段），窗口是工程绝对位置
+      // ⚠️ 单位口径（用户 2026-10-14）：对外一律「拍」（1 拍 = 四分音符 = 480 tick）
+      var info = '作用域：整条轨「' + (v.trackName || ('轨 ' + v.trackIndex)) + '」的 ' + nClips + ' 个片段（' +
+        nNotes + ' 个音符）· 第 ' + beatOf(v.clipBegin) + '–' + beatOf(v.clipEnd) + ' 拍' +
+        '（第 ' + tickToBar(v.clipBegin) + '–' + tickToBar(Math.max(v.clipBegin, v.clipEnd - 1)) + ' 小节）';
+      if (sp) {
+        info += '\n源：第 ' + S.s1 + '–' + S.s2 + ' 小节 → 目标：第 ' + S.d1 + ' 小节起（' +
+          beatOf(sp.srcEndAbs - sp.srcAbs) + ' 拍长）' + (S.exact ? '（精确值来自预览）' : '（按等拍号估算，预览后按 ACE 的小节线校正）');
+      }
+      var lc = liveCounts();
+      if (lc) {
+        info += '\n按位置能配上 ' + lc.matched + ' 个（源范围内 ' + lc.src + ' 个 · 目标范围内 ' + lc.dst + ' 个）';
+        if (lc.matched === 0) {
+          info += '\n⚠️ 一个都配不上 ⇒ 这趟什么都不会动（**本工具不新建音符**）：把目标小节挪到"已有音符、且相对位置一样"的地方；' +
+            '没勾对的属性时也别指望它会补音符。';
+        }
+      }
+      $('rangeInfo').textContent = info;
+      draw();
+      $('prev').disabled = $('run').disabled = S.busy;
+    }
+
+    function values(dry) {
+      return {
+        srcStart: String(S.s1), srcEnd: String(S.s2), dstStart: String(S.d1),
+        tolTicks: String(parseInt($('tol').value, 10) || 30),
+        lyrics: $('lyrics').checked ? '1' : '0',
+        pitch: $('pitch').checked ? '1' : '0',
+        phonemes: $('phon').checked ? '1' : '0',
+        dur: $('dur').checked ? '1' : '0',
+        consonants: $('cons').checked ? '1' : '0',
+        params: $('params').checked ? '1' : '0',
+        paramSel: $('params').checked ? JSON.stringify(pickedParams()) : '',
+        // 同代（同一轨 ⇒ 同一引擎世代）：不换算、不跨代。这两项以前是给「跨轨复制」那条路用的。
+        dynamic: $('params').checked ? '1' : '0',
+        dryRun: dry ? '1' : '0',
+      };
+    }
+
+    /** ⭐ 参数表（用户 2026-10-07：「参数展开，列出所有参数，列个表格，勾选；**v1 就实参和包络两列**」）。
+     *
+     *  行 = 这一份 clip 花名册里**能逐 tick 写（有 dense 可写层）**的参数；
+     *  列 = Go 侧 `xcopy.view` 的 `paramColumns` —— 它按**目标那一份花名册**现推，不写死世代名：
+     *       v1 两列（包络 → `envelope`、真值 → `direct`）、v2 一列（真值 → `user`）；**默认包络全勾**。
+     *  勾好的格子原样发给工具（`paramSel` = `{"tension":["effective","envelope"],…}`），
+     *  **列的含义与落点只在 Go 那一处定义**（`internal/tools/paramsel.go`），页面不自己解释。 */
+    var PN = {};   // 参数名 → 上一轮勾选（重画不丢勾、参数名带 `.` 时也能安全当 DOM 标识）
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+    function paramCols() { return ((S.view || {}).paramColumns || []); }
+    function paramRows() {
+      var v = S.view || {};
+      return (v.params || []).filter(function (p) {
+        return p.available && (p.writableLayers || []).length;
+      });
+    }
+    function renderParamTable() {
+      var wrap = $('ptWrap'), tb = $('ptab'), hint = $('ptHint');
+      if (!wrap) return;
+      wrap.hidden = !$('params').checked;      // 不勾参数曲线 ⇒ 整块隐藏（不留没用的选择）
+      if (wrap.hidden) return;
+      var cols = paramCols(), rows = paramRows();
+      if (!cols.length || !rows.length) {
+        tb.innerHTML = '';
+        hint.textContent = '这一份 clip 的花名册里没有能逐个采样点写的参数层 ⇒ 参数这一项没什么可选。';
+        return;
+      }
+      // 勾选状态按"参数名|列名"记着（重画只换 DOM，不丢勾）
+      tb.querySelectorAll('input[data-p]').forEach(function (i) {
+        (PN[i.getAttribute('data-p')] = PN[i.getAttribute('data-p')] || {})[i.getAttribute('data-c')] = i.checked;
+      });
+      var h = '<tr><th class="pname">参数</th>' + cols.map(function (c) {
+        return '<th title="' + esc(c.hint || '') + '">' + esc(c.label) +
+          '<span class="dst">→ ' + esc(c.dstLayer || '') + '</span></th>';
+      }).join('') + '</tr>';
+      rows.forEach(function (p) {
+        var t = (p.displayName || p.param) + '（' + p.param + ' · ' + (p.scale || '?') + '）' +
+          ' 值域 ' + p.valueMin + '…' + p.valueMax;
+        h += '<tr><td class="pname" title="' + esc(t) + '">' + esc(p.param) + '</td>';
+        cols.forEach(function (c) {
+          var ok = (p.writableLayers || []).indexOf(c.dstLayer) >= 0;   // 这一代这个参数有没有那个层
+          if (!ok) {
+            h += '<td class="na" title="这一代这个参数没有 ' + esc(c.dstLayer) + ' 层">—</td>';
+            return;
+          }
+          var kept = (PN[p.param] || {})[c.key];
+          // ⭐ 用户 2026-10-19：「v1 包络大于实参，**包络优先**」⇒ 默认勾**包络**；
+          // 这一代只有一列（v2 只有实参/user）时当然要勾上。
+          var on = (kept === undefined) ? (c.key === 'envelope' || cols.length === 1) : kept;
+          h += '<td><input type="checkbox" data-p="' + esc(p.param) + '" data-c="' + esc(c.key) +
+            '" autocomplete="off"' + (on ? ' checked' : '') + '></td>';
+        });
+        h += '</tr>';
+      });
+      tb.innerHTML = h;
+      tb.querySelectorAll('input[data-p]').forEach(function (i) { i.addEventListener('change', paramHint); });
+      paramHint();
+    }
+    /** 勾出来的格子 → 发给工具的 `paramSel`（只带勾上的）。 */
+    function pickedParams() {
+      var out = {};
+      ($('ptab') || { querySelectorAll: function () { return []; } }).querySelectorAll('input[data-p]').forEach(function (i) {
+        if (!i.checked) return;
+        var p = i.getAttribute('data-p');
+        (out[p] = out[p] || []).push(i.getAttribute('data-c'));
+      });
+      return out;
+    }
+    function paramHint() {
+      var el = $('ptHint');
+      if (!el) return;
+      var pk = pickedParams(), n = 0, names = Object.keys(pk);
+      names.forEach(function (k) { n += pk[k].length; });
+      el.textContent = n
+        ? ('参数：' + names.length + ' 个参数 · ' + n + ' 格（每格 = 一条曲线，1 格 = 1 条 ACE 撤销记录）')
+        : '⚠️ 参数曲线勾着，但一个格子都没勾 ⇒ 这一项不会写任何东西（工具会如实报"什么都没做"）。';
+    }
+
+    function showReport(d, dry) {
+      var el = $('rep'), j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+      if (!d.ok || !j) { el.className = 'bad'; el.textContent = '失败：' + (d.hint || '看主面板的命令日志'); return; }
+      // 预览回包里有**精确 tick** ⇒ 画框切过去（变拍号也画得准）
+      var pv = (j.pairs && j.pairs[0]) || null;
+      if (pv && pv.srcAbsTick !== undefined) {
+        S.exact = {
+          srcAbs: pv.srcAbsTick, srcEndAbs: pv.srcEndAbsTick,
+          dstAbs: pv.dstAbsTick, dstEndAbs: pv.dstEndAbsTick,
+        };
+      }
+      var L = [];
+      L.push((dry ? '预览' : '已执行') + '：' + (pv ? (pv.srcClip + ' ⇒ ' + pv.dstClip) : ''));
+      if (pv) {
+        L.push('源范围 ' + pv.srcNotes + ' 个音符、目标范围 ' + pv.dstNotes + ' 个 ⇒ **配上 ' + pv.matched + ' 个**' +
+          (pv.srcOnly ? ' · 源侧 ' + pv.srcOnly + ' 个找不到对应位置（**不新建**，照原脚本）' : '') +
+          (pv.dstOnly ? ' · 目标侧 ' + pv.dstOnly + ' 个不会被碰到' : ''));
+      }
+      // ⭐ 属性那一半的细账（有才算，免得全是 0）
+      var attrs = [];
+      if (j.willSetLyrics) attrs.push('歌词 ' + j.willSetLyrics);
+      if (j.willSetPitch) attrs.push('音高 ' + j.willSetPitch);
+      if (j.willSetPhonemes) attrs.push('音素 ' + j.willSetPhonemes + '（冻结成 override）');
+      if (j.willResizeNotes) attrs.push('时值 ' + j.willResizeNotes);
+      if (j.willSetConsonants) attrs.push('辅音时长 ' + j.willSetConsonants + ' 处');
+      if (j.willWriteParamLayers) attrs.push('参数曲线 ' + j.willWriteParamLayers + ' 层 / ' + beatOf(j.paramTicks) + ' 拍');
+      if (j.willWriteDynamicAnchors) attrs.push('dynamic 锚点 ' + j.willWriteDynamicAnchors);
+      L.push(attrs.length ? '要写：' + attrs.join(' · ') : '⚠️ 一个属性都没算出要写的东西（配上 0 个，或两边本来就一样）');
+      // ⛔ 用户口径「只复制手动更改过的」：默认的那些要如实报"没搬"
+      if (j.skippedDefaultPhonemes) L.push('默认发音的音素 ' + j.skippedDefaultPhonemes + ' 个**没搬**（只搬手动改过的）');
+      if (j.skippedDefaultConsonants) L.push('默认的辅音时长 ' + j.skippedDefaultConsonants + ' 个音符**没搬**（只搬手动改过的）');
+      if (j.skipped && j.skipped.length) {
+        var sk = j.skipped.slice(0, 6);
+        L.push('跳过/说明：' + sk.join(' · ') + (j.skipped.length > sk.length ? ' …（共 ' + j.skipped.length + ' 条）' : ''));
+      }
+      if (!dry && j.done) L.push('已写 ' + j.done.length + ' 条命令 ⇒ 不满意按顶栏「撤回这一批」。');
+      if (dry && j.plannedCalls) L.push('计划 ' + j.plannedCalls.length + ' 条命令（执行时才发）。');
+      el.className = 'ok';
+      el.textContent = L.join('\n');
+      render();
+    }
+
+    async function fire(dry) {
+      if (S.busy) return;
+      if (!($('lyrics').checked || $('pitch').checked || $('phon').checked ||
+            $('dur').checked || $('cons').checked || $('params').checked || $('dyn').checked)) {
+        $('rep').className = 'bad'; $('rep').textContent = '一个属性都没勾（歌词/音高/音素/时值/辅音时长/参数曲线/dynamic）'; return;
+      }
+      if (S.s2 <= S.s1) {
+        $('rep').className = 'bad'; $('rep').textContent = '源结束小节要大于源开始小节'; return;
+      }
+      S.busy = true; render();
+      $('rep').className = ''; $('rep').textContent = dry ? '预览中…' : '执行中…';
+      try {
+        var d = await call('xcopy.within', values(dry));
+        showReport(d, dry);
+      } catch (e) {
+        $('rep').className = 'bad'; $('rep').textContent = '请求失败：' + e.message;
+      } finally {
+        S.busy = false; render();
+      }
+    }
+
+    /* ---------- 图上拖动：空白处拖 = 拉源范围；拖目标框 = 挪目标起点 ---------- */
+    function pxOf(ev) {
+      var r = $('mm').getBoundingClientRect();
+      return ev.clientX - r.left;
+    }
+    function barAtPx(px) {
+      var v = S.view, g = MM && MM.geom, tick;
+      if (g && g.scale) {
+        tick = (px - (g.gutter || 0)) / g.scale + (g.t0 || 0);
+      } else {
+        var cssW = $('mm').clientWidth || 580, pad = 8, w = Math.max(1, cssW - pad * 2);
+        var total = Math.max(v.durationTick || 0, v.clipEnd || 0, 1920);
+        tick = (px - pad) / w * total;
+      }
+      var total2 = Math.max(v.durationTick || 0, v.clipEnd || 0, 1920);
+      tick = Math.max(0, Math.min(total2, tick));
+      return Math.max(1, Math.round(tick / (v.ticksPerBar || 1920) + 1));
+    }
+    function mmDown(ev) {
+      var x = pxOf(ev), bx = S.boxes;
+      $('mm').setPointerCapture(ev.pointerId);
+      if (bx && x >= bx.dst[0] && x <= bx.dst[1]) {
+        S.drag = { kind: 'dst', fromBar: barAtPx(x), fromDst: S.d1 };
+      } else {
+        S.drag = { kind: 'src', bar: barAtPx(x), moved: false };
+        S.s1 = S.s2 = S.drag.bar;
+        S.exact = null;
+      }
+      render();
+    }
+    function mmMove(ev) {
+      if (!S.drag) return;
+      var bar = barAtPx(pxOf(ev));
+      if (S.drag.kind === 'src') {
+        S.s1 = Math.min(S.drag.bar, bar);
+        S.s2 = Math.max(S.drag.bar, bar);
+        S.exact = null;
+      } else {
+        S.d1 = Math.max(1, S.drag.fromDst + (bar - S.drag.fromBar));
+        S.exact = null;
+      }
+      render();
+    }
+    function mmUp() { S.drag = null; save(); render(); }
+
+    /* ---------- 接线 ---------- */
+    load();
+    $('refresh').addEventListener('click', function () { boot(); });
+    ['s1', 's2', 'd1'].forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        var v = parseFloat($(id).value);
+        if (!isNaN(v) && v >= 1) {
+          if (id === 's1') { S.s1 = v; if (S.s2 <= S.s1) S.s2 = S.s1 + 1; }
+          if (id === 's2') { S.s2 = v; if (S.s2 <= S.s1) S.s1 = Math.max(1, S.s2 - 1); }
+          if (id === 'd1') { S.d1 = v; }
+          S.exact = null;
+        }
+        save(); render();
+      });
+    });
+    $('mm').addEventListener('pointerdown', mmDown);
+    $('mm').addEventListener('pointermove', mmMove);
+    $('mm').addEventListener('pointerup', mmUp);
+    $('mm').addEventListener('pointercancel', mmUp);
+    window.addEventListener('resize', draw);
+    $('prev').addEventListener('click', function () { fire(true); });
+    $('run').addEventListener('click', function () { fire(false); });
+    // 参数表只在勾了参数曲线时才有意义 ⇒ 勾选一变就展开/收起（收起时格子里的勾**留着**）
+    $('params').addEventListener('change', renderParamTable);
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      try {
+        var d = await call('xcopy.view', {});
+        var v = (d.calls && d.calls[0] && d.calls[0].json) || null;
+        if (!d.ok || !v) throw new Error(d.hint || '拿不到当前轨/片段');
+        S.view = v;
+        S.exact = null;
+        renderParamTable();
+        var b0 = tickToBar(v.clipBegin);
+        // 首次进来把默认范围铺在**第一个音符所在的小节**（用户能一眼看到框罩着真音符，而不是空段）
+        if (!localStorage.getItem(LS)) {
+          var firstBar = b0;
+          (v.clips || []).forEach(function (cl) {
+            if (cl.uuid === v.clipUuid && cl.notes && cl.notes.length) {
+              firstBar = tickToBar(cl.begin + cl.notes[0].pos);
+            }
+          });
+          S.s1 = firstBar;
+          S.s2 = firstBar + 2;
+          S.d1 = S.s2 + 1;
+        }
+        render();
+        $('rep').className = ''; $('rep').textContent = '还没跑。';
+      } catch (e) {
+        $('stat').textContent = '读取失败：' + e.message;
+        mmEmpty('ACE 没开或读取失败 —— 打开 ACE 后点「刷新」');
+        $('dot').className = 'dot';
+      }
+    }
+    boot();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

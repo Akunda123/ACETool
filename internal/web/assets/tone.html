@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>语调教</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;flex:0 0 auto}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px;position:relative}
+    .warn{margin:0 0 10px;padding:8px 10px;border:1px solid var(--warn,#d9a441);border-left-width:4px;
+      border-radius:6px;background:rgba(217,164,65,.12);color:#ffd89a;font-size:12.5px}
+    .msg{color:var(--dim,#9498a0);font-size:12px}
+    .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+    .chip{position:relative;min-width:46px;padding:3px 6px 4px;border:1px solid var(--line,#3f434a);border-radius:6px;
+      background:var(--inset,#242830);cursor:default;text-align:center;user-select:none}
+    .chip:hover{border-color:var(--accent,#1a73e8)}
+    .chip .zi{font-size:16px;line-height:1.2}
+    .chip .to{font-size:12px;color:var(--dim,#9498a0)}
+    .chip.set .to{color:var(--warn,#d9a441)}
+    .chip.set{border-color:rgba(217,164,65,.6)}
+    .chip.mute .zi{color:var(--dim,#9498a0)}
+    #pick{position:absolute;z-index:9;display:none;gap:2px;padding:3px;border:1px solid var(--line,#3f434a);
+      border-radius:7px;background:var(--panel,#2f333a);box-shadow:0 4px 14px rgba(0,0,0,.4)}
+    #pick button{border:1px solid transparent;background:transparent;color:var(--fg,#d6dae0);font:inherit;font-size:15px;
+      padding:2px 7px;border-radius:5px;cursor:pointer;line-height:1.3}
+    #pick button:hover{background:var(--inset,#242830);border-color:var(--accent,#1a73e8)}
+    #pick button.on{border-color:var(--warn,#d9a441);color:var(--warn,#d9a441)}
+    .step{display:flex;align-items:center;gap:8px;margin:6px 0}
+    .step b{flex:0 0 auto;font-weight:500;color:var(--ok,#5ebd7a)}
+    .out{margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--inset,#242830);
+      border:1px solid var(--line,#3f434a);border-radius:6px;padding:8px 10px;font:12px/1.55 ui-monospace,Consolas,monospace;
+      color:var(--dim,#9498a0);min-height:70px;max-height:34vh;overflow:auto}
+    .out.ok{color:var(--ok,#5ebd7a)}
+    .out.bad{color:var(--bad,#e06c75)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>语调教</h1>
+    <span class="stat"><span class="dot" id="dot"></span><span id="stat">读取中…</span></span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <div class="warn">按声调给每个音符写**音高锚点**：先清掉这个音符区间里的锚点与音高线，再加一条锚点。
+      顺序 ① 保存工程 → ② 执行（改 .acep → 自动重新加载）；执行前自动备份，可一键恢复。
+      ⚠️ 实测（2026-10-15）：② 让 ACE 重开工程时**会把 ACE 的撤销栈整个清掉**（6 条 → 0 条）⇒ 之后 Ctrl+Z 回不到以前，
+      **还原只能靠 ↺ 恢复备份**；另外重开会**清空编辑器选区**，要接着做先在 ACE 里重新选。</div>
+
+    <div class="msg" id="scope">读取中…</div>
+    <!-- ⚠️ `#pick` 必须与 `#chips` 同一个**祖先**：弹出层是兄弟的话，鼠标从字挪到选项上、
+         离开 `#chips` 的盒子就会触发 mouseleave 把它关掉（用户 2026-10-10：「hover完刚划到音调就没了」）。
+         `render()` 只重写 `#chips` 的 innerHTML ⇒ `#pick` 放在这一层不会被冲掉。 -->
+    <div id="chipzone">
+      <div class="chips" id="chips"></div>
+      <div id="pick"></div>
+    </div>
+    <div class="msg" id="hint">鼠标停在字上可以选声调：ā 阴平 · á 阳平 · ǎ 上声 · à 去声 · a 不动</div>
+
+    <div class="step"><b>①</b>
+      <button class="btn" id="p1" type="button">保存工程</button>
+      <span class="msg" id="p1stat">未执行</span>
+    </div>
+    <div class="step"><b>②</b>
+      <button class="btn" id="p2" type="button" disabled>执行（改工程文件）</button>
+      <span class="msg" id="p2stat">先做第 ① 步</span>
+    </div>
+    <div class="step"><b>③</b>
+      <button class="btn" id="undo" type="button" disabled>恢复备份</button>
+      <span class="msg" id="ustat">还没有备份</span>
+    </div>
+    <div class="msg" id="ppath"></div>
+
+    <div class="out" id="out">还没开始。</div>
+  </div>
+
+  <script>
+    /* 语调教：把每个音符的声调写成**音高锚点**（文件路线）。
+       ① 读选中（没选就整条片段）的音符 + `lyric.tones` 算声调 → 一排「字」卡片
+       ② 鼠标停在卡片上选声调（ā á ǎ à a；a = 不动 = 不清不写）
+       ③ ① 保存工程 → ② 执行（`tone.apply`：清区间锚点+曲线样本 → 加锚点）→ 自动重新加载
+          ↺ 恢复备份（project.restore） */
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    var SYM = { '1': 'ā', '2': 'á', '3': 'ǎ', '4': 'à', '-': 'a' };
+    var S = { busy: false, path: '', backup: '', notes: [], tones: [], pickAt: -1 };
+
+    async function postRun(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 保持 null */ }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      return data;
+    }
+    window.postRun = postRun;
+    function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
+
+    function say(text, cls) {
+      var el = $('out');
+      el.className = 'out' + (cls ? ' ' + cls : '');
+      el.textContent = text;
+    }
+    function busy(on) {
+      S.busy = on;
+      $('p1').disabled = on;
+      $('p2').disabled = on || !S.path || !S.notes.length;
+      $('undo').disabled = on || !S.backup;
+      $('refresh').disabled = on;
+    }
+
+    /* ---------- 读：音符 + 声调 ---------- */
+    async function readAll() {
+      S.notes = [];
+      S.tones = [];
+      $('chips').innerHTML = '';
+      $('scope').textContent = '读取中…';
+      var d = await postRun('vibrato.read', { path: S.path, single: '0' });
+      if (!d.ok) throw new Error(d.hint || '读音符失败');
+      var r = firstJSON(d);
+      S.notes = (r['音符信息'] || []).map(function (n) {
+        return { uuid: n['音符'], zi: n['歌词'] || '', pitch: n['音高'], pos: n['片段内位置（拍）'], dur: n['时长（拍）'] };
+      });
+      $('scope').textContent = (r['范围'] || '') + ' · ' + (r['片段'] ? '片段「' + r['片段'] + '」' : '');
+
+      // 声调：优选用选区的，没选区就用整个片段（延音/空歌词的音符不会被算，这里按 uuid 配）
+      var td = await postRun('lyric.tones', { source: 'selection', toneMode: 'library' });
+      if (!td.ok) td = await postRun('lyric.tones', { source: 'clip', toneMode: 'library' });
+      var byUUID = {};
+      if (td.ok) (firstJSON(td).chars || []).forEach(function (c) {
+        if (c.noteUuid && byUUID[c.noteUuid] === undefined) byUUID[c.noteUuid] = c;
+      });
+      S.tones = S.notes.map(function (n) {
+        var c = byUUID[n.uuid];
+        if (!c || !c.tone || c.tone > 4) return '-'; // 轻声 / 延音 / 非中文 / 定不出 ⇒ 不动
+        return String(c.tone);
+      });
+      render();
+    }
+
+    function render() {
+      closePick();
+      var box = $('chips');
+      box.innerHTML = S.notes.map(function (n, i) {
+        var t = S.tones[i];
+        var cls = 'chip' + (t === '-' ? ' mute' : '');
+        return '<div class="' + cls + '" data-i="' + i + '" title="音高 ' + n.pitch + ' · 第 ' + n.pos + ' 拍（时长 ' + n.dur + ' 拍）' +
+          ' · ' + (t === '-' ? '不动' : '声调 ' + t) + '">' +
+          '<div class="zi">' + (n.zi || '—') + '</div><div class="to">' + SYM[t] + '</div></div>';
+      }).join('');
+      var n = 0;
+      S.tones.forEach(function (t) { if (t !== '-') n++; });
+      $('hint').textContent = '共 ' + S.notes.length + ' 个音符 · 会写 ' + n + ' 个（`a` 不动 = 不清也不写）· ' +
+        '鼠标停在字上可以选声调：ā 阴平 · á 阳平 · ǎ 上声 · à 去声 · a 不动';
+      busy(false);
+    }
+
+    /* ---------- hover / 点击选声调 ---------- */
+    var OPEN = null;
+    var CLOSE_T = null;
+    function openPick(i, chip) {
+      S.pickAt = i;
+      var el = $('pick');
+      el.style.display = 'flex';
+      el.innerHTML = ['1', '2', '3', '4', '-'].map(function (t) {
+        return '<button type="button" data-t="' + t + '"' + (S.tones[i] === t ? ' class="on"' : '') + '>' + SYM[t] + '</button>';
+      }).join('');
+      var chipsRect = $('chips').getBoundingClientRect();
+      var r = chip.getBoundingClientRect();
+      // 紧贴字的**下沿**（不留缝，鼠标往下挪时不会经过一段"两边都不属于"的空隙）
+      el.style.left = Math.max(2, r.left - chipsRect.left + $('chips').offsetLeft - 14) + 'px';
+      el.style.top = (r.bottom - chipsRect.top + $('chips').offsetTop - 1) + 'px';
+      // 给这一区**让出**弹出层的高度，否则它压在下面那行提示上（弹出层是绝对定位，不改布局）
+      $('chipzone').style.paddingBottom = '36px';
+      OPEN = i;
+    }
+    function closePick() {
+      if (CLOSE_T) { clearTimeout(CLOSE_T); CLOSE_T = null; }
+      $('pick').style.display = 'none';
+      $('chipzone').style.paddingBottom = '';
+      OPEN = null;
+      S.pickAt = -1;
+    }
+    /** 离开时**延迟**关：手从字往选项上挪要跨几个像素，立刻关就等于没法点（用户 2026-10-10 的反馈）。 */
+    function closePickSoon() {
+      if (CLOSE_T) clearTimeout(CLOSE_T);
+      CLOSE_T = setTimeout(closePick, 300);
+    }
+    function cancelClose() {
+      if (CLOSE_T) { clearTimeout(CLOSE_T); CLOSE_T = null; }
+    }
+    $('chips').addEventListener('mouseover', function (ev) {
+      var chip = ev.target.closest ? ev.target.closest('.chip') : null;
+      if (!chip) return;
+      var i = parseInt(chip.getAttribute('data-i'), 10);
+      cancelClose();
+      if (i === OPEN) return;
+      openPick(i, chip);
+    });
+    // 点一下字也能开（不靠 hover 精度）；点别处关
+    $('chips').addEventListener('click', function (ev) {
+      var chip = ev.target.closest ? ev.target.closest('.chip') : null;
+      if (!chip) return;
+      var i = parseInt(chip.getAttribute('data-i'), 10);
+      cancelClose();
+      if (i === OPEN) closePick(); else openPick(i, chip);
+    });
+    $('chipzone').addEventListener('mouseleave', closePickSoon);
+    $('chipzone').addEventListener('mouseenter', cancelClose);
+    $('pick').addEventListener('mouseenter', cancelClose);
+    $('pick').addEventListener('mouseleave', closePickSoon);
+    $('pick').addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('button') : null;
+      if (!b) return;
+      ev.stopPropagation();
+      var i = S.pickAt;
+      if (i < 0) return;
+      S.tones[i] = b.getAttribute('data-t');
+      var chip = $('chips').querySelector('.chip[data-i="' + i + '"]');
+      if (chip) {
+        chip.className = 'chip' + (S.tones[i] === '-' ? ' mute' : ' set');
+        chip.querySelector('.to').textContent = SYM[S.tones[i]];
+      }
+      closePick();
+    });
+    document.addEventListener('click', function (ev) {
+      var inZone = ev.target.closest ? ev.target.closest('#chipzone') : null;
+      if (!inZone) closePick();
+    });
+
+    /* ---------- ① 保存工程 ---------- */
+    $('p1').addEventListener('click', async function () {
+      if (S.busy) return;
+      busy(true);
+      $('p1stat').textContent = '保存中…';
+      say('① 保存工程…');
+      try {
+        var d = await postRun('project.save', {});
+        var p = firstJSON(d).savedPath || '';
+        var pd = await postRun('project.path', {});
+        S.path = p || firstJSON(pd)['工程文件路径'] || '';
+        $('ppath').textContent = S.path ? ('工程文件：' + S.path) : '';
+        if (!S.path) {
+          $('p1stat').textContent = '没有路径';
+          say('① 没拿到路径：这份工程**还没保存过**（临时工程）。\n' +
+            '请你在 ACE 里自己**保存 / 另存为**一个工程包（存到哪由你定），存好之后再点一次 ①。', 'bad');
+          return;
+        }
+        $('p1stat').textContent = '已保存';
+        $('p2stat').textContent = '可以执行了';
+        say('① 已保存。工程文件：' + S.path + '\n\n下一步：点 ② 执行（会把 ' + S.tones.filter(function (t) { return t !== '-'; }).length +
+          ' 个音符写成音高锚点；`a` 的音符不动）。', 'ok');
+      } catch (e) {
+        $('p1stat').textContent = '失败';
+        say('① 失败：' + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    });
+
+    /* ---------- ② 执行 ---------- */
+    $('p2').addEventListener('click', async function () {
+      if (S.busy || !S.path || !S.notes.length) return;
+      busy(true);
+      $('p2stat').textContent = '改文件中…';
+      say('② 改工程文件…（先备份，再原地替换）');
+      try {
+        var d = await postRun('tone.apply', {
+          path: S.path,
+          notes: S.notes.map(function (n) { return n.uuid; }).join(','),
+          tones: S.tones.join(''),
+        });
+        if (!d.ok) { $('p2stat').textContent = '失败'; say('② 失败：' + (d.hint || ''), 'bad'); return; }
+        var r = firstJSON(d);
+        var L = ['② 已改工程文件'];
+        if (r['片段']) L.push(r['片段']);
+        if (r['源']) L.push(r['源']);
+        if (r['目标']) L.push(r['目标']);
+        L.push('音高锚点：' + ((r['锚点'] || {}).结果 || ''));
+        L.push('音高线：' + ((r['曲线'] || {}).结果 || ''));
+        L.push('音符颤音：' + ((r['音符颤音'] || {}).结果 || ''));
+        if (r['备份']) { L.push('备份：' + r['备份']); S.backup = r['备份']; $('ustat').textContent = '可恢复：' + r['备份']; }
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        (r['逐音符'] || []).slice(0, 20).forEach(function (c) { L.push('· ' + c); });
+        $('p2stat').textContent = '已写入';
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+        var od = await postRun('project.open', { path: S.path });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : ('\n\n重新加载**失败**：' + (od.hint || '') +
+          '\n（手动在 ACE 里重新打开这份工程）')), od.ok ? 'ok' : 'bad');
+      } catch (e) {
+        $('p2stat').textContent = '失败';
+        say('② 失败：' + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    });
+
+    /* ---------- ↺ 恢复备份 ---------- */
+    $('undo').addEventListener('click', async function () {
+      if (S.busy || !S.path) return;
+      if (!confirm('把最近一次备份换回工程文件？（换之前会给当前文件也留一份备份）')) return;
+      busy(true);
+      $('ustat').textContent = '恢复中…';
+      try {
+        var d = await postRun('project.restore', { path: S.path, backup: S.backup || '' });
+        if (!d.ok) { $('ustat').textContent = '失败'; say('恢复失败：' + (d.hint || ''), 'bad'); return; }
+        var r = firstJSON(d);
+        var L = ['已把备份换回工程文件', '用哪份：' + r['用哪份备份'] + '（' + r['备份时间'] + '）'];
+        if (r['换回去之前又留的一份']) L.push('换之前的当前文件也留了一份：' + r['换回去之前又留的一份']);
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        $('ustat').textContent = '已恢复';
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+        var od = await postRun('project.open', { path: S.path });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : ('\n\n重新加载失败：' + (od.hint || ''))), od.ok ? 'ok' : 'bad');
+      } catch (e) {
+        $('ustat').textContent = '失败';
+        say('恢复失败：' + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    });
+
+    $('refresh').addEventListener('click', function () { boot(); });
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      closePick();
+      try {
+        var pd = await postRun('project.path', {});
+        var pj = firstJSON(pd);
+        S.path = pj['工程文件路径'] || S.path;
+        $('ppath').textContent = S.path ? ('工程文件：' + S.path) : '这份工程还没保存过（临时工程）—— 先在 ACE 里保存';
+        await readAll();
+        $('stat').textContent = S.notes.length + ' 个音符';
+        $('dot').className = 'dot' + (S.notes.length ? ' on' : '');
+        busy(false);
+        say('读好了：' + S.notes.length + ' 个音符。\n' +
+          '要改声调就把鼠标停在字上选；觉得对了就 ① 保存工程 → ② 执行。');
+      } catch (e) {
+        $('stat').textContent = '读取失败';
+        $('dot').className = 'dot';
+        $('scope').textContent = '';
+        say('读取失败：' + e.message + '\n（先在 ACE 里点开要处理的那条片段、选好音符，再点刷新）', 'bad');
+      }
+    }
+    boot();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

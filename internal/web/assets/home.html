@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>ACE 工具箱</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{background:var(--bg,#282c33);display:flex;flex-direction:column;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:38px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600;letter-spacing:.3px}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .iconbtn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:6px;border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);cursor:pointer;font-size:13px;line-height:1;padding:0}
+    .iconbtn:hover{border-color:var(--accent,#1a73e8)}
+    /* 「撤回这一批」：没东西可退时是灰的（不假装能退），有得退时用警示色 */
+    .undobtn{flex:0 0 auto;border:1px solid var(--line,#3f434a);background:transparent;color:var(--dim,#9498a0);
+      border-radius:6px;padding:3px 9px;font:inherit;font-size:11.5px;line-height:1.2;cursor:pointer}
+    .undobtn:disabled{opacity:.55;cursor:default}
+    .undobtn:not(:disabled){border-color:var(--warn,#d9a441);color:var(--warn,#d9a441)}
+    .undobtn:not(:disabled):hover{background:rgba(217,164,65,.14)}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+    /* 宽窗口下由 applyLayout() 用 JS 覆写成 132px（窄窗口才吃 84）⇒ 不会摊成十几列 */
+    .fbtn{min-height:44px;padding:10px;border-radius:7px;border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);cursor:pointer;font:inherit;font-size:12px;text-align:left;transition:border-color .12s,transform .06s}
+    .fbtn:hover{border-color:var(--accent,#1a73e8)}
+    .fbtn:disabled{opacity:.6;cursor:default}
+    /* ⭐ 用户 2026-10-15：「有的有上下边框颜色有的没有不协调」⇒ **边框统一按类着色**：
+       每一类都是「左竖条 + 四边描边」同一个色相、同一个透明度(.5)，只有色相在变：
+         蓝 = 开面板/菜单（默认）· 绿 = 立即执行 · 琥珀 = 改工程文件
+       （空槽 `.fbtn`（没 `.live`）保持中性灰边，不参与这套语义。） */
+    .fbtn.live{box-shadow:inset 2px 0 0 var(--accent,#1a73e8);border-color:rgba(26,115,232,.5)}
+    /* ⭐ 改**工程文件**的那类按钮（音高线 / 语调教 / 颤音模板）：那是**文件路线**（保存→读 .acep→改→替换→重开），
+       跟"走 CLI 的"和"开个窗口点点看"都不同性质 ⇒ 用户 2026-10-17「把需要改工程的放到一起，用同色」：
+       换成 web 调色板里的 `--bad`（红），**不再用琥珀**（琥珀是"要参数"，会撞车）。侧条那边同一个色。 */
+    .fbtn.file{box-shadow:inset 2px 0 0 var(--bad,#e06c75);border-color:rgba(224,108,117,.5)}
+    .fbtn.file:hover{border-color:var(--bad,#e06c75)}
+    /* ⭐ 用户 2026-10-15：「RGB 这种点一下弹一个面板的」和「连接音符这种立即执行的」要**像保存工程那样在按钮上分开**
+       ⇒ 立即执行 = **绿色**左竖条 + 绿描边（点了就跑、会改工程）；开面板 = 蓝（现状）；改工程文件 = **红**（`.file`，2026-10-17 定的）。
+       只换色，不加字。 */
+    .fbtn.instant{box-shadow:inset 2px 0 0 var(--ok,#5ebd7a);border-color:rgba(94,189,122,.5)}
+    .fbtn.instant:hover{border-color:var(--ok,#5ebd7a)}
+    /* hover 注释：**可交互**（里面有滑块），所以 pointer-events 要开 */
+    #htip{position:fixed;z-index:80;width:236px;padding:8px 9px;border-radius:6px;background:#1b1f26;border:1px solid var(--line,#3f434a);color:var(--fg,#d6dae0);font-size:11px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+    #htip .tt{color:var(--fg,#d6dae0)}
+    #htip .row{margin-top:7px;padding-top:7px;border-top:1px solid var(--line,#3f434a);display:flex;align-items:center;gap:6px}
+    #htip label{color:var(--dim,#9498a0);flex:0 0 auto}
+    #htip input[type=range]{flex:1;min-width:0;accent-color:var(--accent,#1a73e8);height:16px;margin:0}
+    /* 注释里的文本框（如「批量替换音素」的查找/替换）：要紧凑、要能点 */
+    #htip input[type=text]{flex:0 0 auto;min-width:0;background:#242830;border:1px solid var(--line,#3f434a);
+      color:var(--fg,#d6dae0);border-radius:4px;padding:2px 5px;font:inherit;font-size:11px}
+    #htip input[type=text]:focus{outline:none;border-color:var(--accent,#1a73e8)}
+    #htip input[type=checkbox]{accent-color:var(--accent,#1a73e8);margin:0}
+    #htip .row label{display:flex;align-items:center;gap:5px}
+    #htip .row.act{justify-content:flex-end}
+    #htip .row.act button{border:1px solid var(--accent,#1a73e8);background:rgba(26,115,232,.18);
+      color:var(--accent,#1a73e8);border-radius:5px;padding:3px 14px;font:inherit;font-size:11.5px;cursor:pointer}
+    #htip .row.act button:hover{background:rgba(26,115,232,.3)}
+    /* 没有可退的那一批时「回退这一批」是灰的 —— 别让人以为点了能退 */
+    #htip .row.act button:disabled{border-color:var(--line,#3f434a);background:transparent;
+      color:var(--dim,#9498a0);cursor:default}
+    #htip .stat{color:var(--dim,#9498a0);line-height:1.45;word-break:break-all}
+    #htip .tt{white-space:pre-wrap}
+    #htip .val{flex:0 0 auto;color:var(--accent,#1a73e8);min-width:52px;text-align:right}
+    #htoast{position:fixed;left:10px;right:10px;bottom:10px;z-index:70}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>ACETool</h1>
+    <span class="stat"><span class="dot" id="hdot"></span><span id="hstat">连接中…</span></span>
+    <span class="sp"></span>
+    <!-- ⭐ 用户 2026-10-07：「给面板加一个撤回功能，用于撤回刚才的一批操作，用于单选项立即执行的按钮」
+         —— 撤回**上一次写操作**压进 ACE 撤销栈的全部条目（走引擎自己的撤销，连音素时序都能还原）。
+         没有可退的一批时是灰的。 -->
+    <button class="undobtn" id="btnUndo" type="button" disabled title="还没有可撤回的一批（先按一个会写工程的按钮）">撤回这一批</button>
+    <!-- ⚠️ 2026-10-17 用户：「btnAppWin可以删了」⇒ 顶栏那颗「窗」（开独立 app 窗口）**已删**。
+         要独立窗口还有两条路：托盘图标左键「打开面板」、细条上的「展开为 web 页」（§79）。 -->
+    <!-- ⭐ 用户 2026-10-16：「做一个 web 和侧栏的切换按钮就行了」⇒ 这颗在 **web 窗口 ⇄ 原生侧栏** 之间切。
+         状态从 `/api/rail` 读：侧栏在跑 ⇒ 按钮显示"web"（点它切回 web 并停掉侧条）。 -->
+    <button class="iconbtn" id="btnRail" type="button" title="切到ACE侧栏">侧</button>
+    <button class="iconbtn" id="btnSettings" type="button" title="设置">⚙</button>
+    <button class="iconbtn" id="btnOntop" type="button" title="置顶">📌</button>
+  </div>
+  <div class="wrap">
+    <div class="grid" id="hgrid"></div>
+  </div>
+  <div class="hint bad" id="htoast" hidden></div>
+  <div id="htip" hidden></div>
+
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+
+    /* 阈值档位：**音符时值**（tick，480 = 1 拍）。第 0 档 = 不设限（默认，= 原脚本行为）。 */
+    var TIERS = [
+      { t: 0, name: '不设限' },
+      { t: 1920, name: '全音符' },
+      { t: 960, name: '二分音符' },
+      { t: 480, name: '四分音符' },
+      { t: 240, name: '八分音符' },
+      { t: 120, name: '十六分音符' },
+      { t: 60, name: '三十二分音符' },
+      { t: 30, name: '六十四分音符' },
+      { t: 15, name: '一百二十八分音符' },
+    ];
+
+    /* 一键按钮（不需要子界面）。tier = 用阈值滑块；fields = 点一下展开菜单（不直接跑）。
+       ⚠️ 用户 2026-10-06：「**所有的文字描述再精简**」—— 这里每条**只留一句**，
+       机制与踩过的坑都在 HANDOVER，别往界面上搬。 */
+    /* 默认顺序（用户 2026-10-24）：
+       · 即时类里**歌词修改那几个排一起**（删词 / 合并 / 添加 - / 复制 / 粘贴）；
+       · **和声与面板类放一起**（它也是开子窗口的）。 */
+    var QUICK_PREF = [
+      '删除歌词并前移', '合并歌词并前移', '添加 - 歌词', '复制歌词', '粘贴歌词',
+      '选择之后音符', '连接音符', '播放头位置分割轨道', '批量替换音素',
+      'RGB 变色', '填词', 'LRC 导出', '跨轨复制', '轨内复制', '参数映射',
+      '跨轨道复制音高线', '语调教', '复制颤音模板', '轨道内复制音高线',
+      '查找', '谱面编辑器', '和声', '生成二维码',
+    ];
+
+    var QUICK = [
+      // ⭐ 用户 2026-10-21：「默认把按钮按功能颜色分类排列，那两个去上面」——
+      // 绿色（立即执行）里最常用的歌词操作放最前：删词 / 合并（同一个工具靠 mode 区分）。
+      {
+        label: '删除歌词并前移', tool: 'lyric.remove', values: { mode: 'delete' },
+        tip: '丢掉本音符的歌词，后面的歌词整体**前移一位**（照原脚本；最后一个音符的歌词留在原地）。',
+      },
+      {
+        label: '合并歌词并前移', tool: 'lyric.remove', values: { mode: 'merge' },
+        tip: '本音符的歌词**并上**下一个的歌词，再整体前移一位（照原脚本）。',
+      },
+      {
+        label: '和声', tool: 'tuning.harmony', custom: 'harmonyWindow',
+        tip: '把选中的音符（没选中就是整个片段）按音级移到和声音程上。',
+      },
+      {
+        label: '连接音符', tool: 'note.join', tier: true,
+        param: 'maxGap',
+        tip: '把音符首尾接上（前一个延长到下一个的起点）。阈值 = 只接不超过它的缝，更大的当气口留着',
+      },
+      {
+        // ⭐ 用户 2026-10-24：「默认之后的音符，右键切换之前、当前、之后」
+        label: '选择之后音符', tool: 'select.playhead', values: { side: 'after' },
+        rightCycle: ['after', 'before', 'at'],
+        tip: '建立选区：选择播放头之后 / 之前 / 当前那个音符（**右键切换方向**）',
+      },
+      {
+        label: '播放头位置分割轨道', tool: 'track.split', values: {},
+        tip: '在播放头处把当前轨切成两条。',
+      },
+      {
+        label: '复制歌词', tool: 'lyric.copy', values: {}, custom: 'copyLyrics',
+        tip: '把选中音符的歌词按顺序复制到剪贴板（空格分隔）',
+      },
+      {
+        label: '粘贴歌词', tool: 'lyric.paste', values: { mark: '-' }, custom: 'pasteLyrics',
+        tip: '把剪贴板里的歌词按顺序贴到选中音符上。',
+      },
+      {
+        label: '添加 - 歌词', tool: 'lyric.shift', values: { mark: '-' },
+        tip: '给播放头所在音符插一个 `-`（延长上一个字），后面的歌词往后移一位。',
+      },
+      {
+        label: 'RGB 变色', tool: 'track.color', custom: 'rgbWindow',
+        tip: '用于自动改变轨道颜色',
+      },
+      {
+        label: '填词', tool: 'lyric.pages', custom: 'lyricWindow',
+        tip: '用于辅助填词、修改歌词',
+      },
+      {
+        label: 'LRC 导出', tool: 'lyric.lrc', custom: 'lrcWindow',
+        tip: '导出LRC',
+      },
+      {
+        label: '批量替换音素', tool: 'phoneme.replace',
+        values: { scope: 'auto' },
+        // ⭐ 用户 2026-10-06：**只给两个框**（查找 / 替换）+ 一个「替换」按钮，
+        // 点网格上的按钮 = **展开菜单**（不直接跑）；查找框输入完就报"范围内有多少个音符含它"，
+        // 点「替换」后报成功数。范围固定 = 选中的音符（没选中就整个片段）。
+        fields: [
+          { name: 'find', label: '查找', placeholder: 'ing', width: 62 },
+          { name: 'replace', label: '替换', placeholder: 'in（留空=删）', width: 104 },
+        ],
+        probe: true,
+        tip: '对指定的音素进行批量查找和替换',
+      },
+      {
+        label: '跨轨复制', tool: 'xcopy.notes', custom: 'xcopyWindow',
+        tip: '将一轨部分内容复制进另一轨相同位置',
+      },
+      {
+        label: '轨内复制', tool: 'xcopy.within', custom: 'withinWindow',
+        tip: '将部分内容复制到同一轨道内另一位置',
+      },
+      {
+        label: '参数映射', tool: 'param.sync', custom: 'paramWindow',
+        tip: '让一个参数跟着另一个变化',
+      },
+      {
+        // ⭐ 用户 2026-10-10：「新增按钮跨轨道复制音高线，就是跨轨道和音高线结合」
+        label: '跨轨道复制音高线', tool: 'pitch.xcopy', custom: 'pitchXWindow', tone: 'file',
+        tip: '把**源轨**一段小节里的音高线复制到**目标轨**的同一段时间上',
+      },
+      {
+        // ⭐ 用户 2026-10-10：「下一个按钮：语调教：选中一些音符（不选则全部），显示所有歌词，
+        // 点击按钮计算声调 lyric.tones，hover 歌词可以从 āáǎàa 里选声调……清除音符对应位置区间锚点和音高线，
+        // 添加对应音高锚点」。调型表照 SV1 那份「语调教.js」；轻声 = 完全不动。
+        label: '语调教', tool: 'tone.apply', custom: 'toneWindow', tone: 'file',
+        tip: '给音符添加读音音高线锚点',
+      },
+      {
+        // ⭐ 用户 2026-10-10：「新建一个保存工程的按钮：选中一个音符，设为颤音模板，
+        // 然后第二次选中一批音符，把第一次保存音符的颤音属性复制到第二次选中的音符上」。
+        // 颤音（`notes[].vibrato`）也只在**文件**里 ⇒ 同一套三步流程 + 备份/恢复。
+        label: '复制颤音模板', tool: 'vibrato.apply', custom: 'vibWindow', tone: 'file',
+        tip: '将一个音符的颤音属性复制到其他音符上',
+      },
+      {
+        // ⭐ 用户 2026-10-08：「后面的内容都是涉及音高线的」+「新home页按钮，连带一个流程web页」
+        // 音高线只能走**文件**（CLI 上 `pitch` 不可用）⇒ 这一页就是那条流程：
+        // ① 保存工程 ② 执行（读路径→改→替换）③ 自动重新加载；后悔药 = ③「恢复备份」。
+        // ⭐ 用户 2026-10-10：「把这个按钮名字改成轨道内复制音高线」。
+        label: '轨道内复制音高线', tool: 'acep.patch', custom: 'pitchWindow', tone: 'file',
+        tip: '把一段小节里的**音高线**复制到同一片段另一处',
+      },
+      {
+        // ⭐ 用户 2026-10-21：设置里能勾开「生成二维码」，但**主面板**里却没有这颗按钮
+        //（之前只加进了侧栏）⇒ 这里补上，key 是 `page:qr.html`，跟侧栏那颗同一个开关。
+        label: '生成二维码', custom: 'qrWindow', tone: 'file',
+        tip: '把文本编成二维码，按 2D 摆进 Sing 轨（改工程文件；默认隐藏，设置里勾开才出现）',
+      },
+      {
+        // ⭐ 用户 2026-10-08：「我要的是进入 home.html 的**正式功能**，新的 web 页」——
+        // 查找从「完整面板里的一页」升级成 home 上的按钮 + 独立子窗口 `find.html`。
+        label: '查找', tool: 'find.notes', custom: 'findWindow',
+        tip: '查找搜索特定内容',
+      },
+      {
+        // ⭐ 用户 2026-10-07：「把这个功能加入到 home.html」——
+        // 谱面编辑器（**谱 → 音符的生成**）从主页面就能开，不用去完整面板里翻。
+        label: '谱面编辑器', tool: 'jianpu.editor', custom: 'notationWindow',
+        tip: '编辑五线谱和简谱，支持谱与音符互换',
+      },
+    ];
+
+    /* 剪贴板配对的两个（读/写系统剪贴板只能在页面侧做，exe 不管剪贴板） */
+    var CUSTOM = {
+      /** RGB 变色：**开子窗口**（用户口径），设置都在子窗口里 */
+      rgbWindow: async function () {
+        openSub('rgb.html', 'RGB');
+      },
+      /** 填词：**开子窗口** —— 一句话一行 + 试听/跳转，设置（两个选项）也在子窗口里 */
+      lyricWindow: async function () {
+        openSub('lyric.html', '填词');
+      },
+      /** LRC 导出：**开子窗口** —— 行表 + 分割/合并 + 偏移/忽略短间隙 + 复制/落盘 */
+      lrcWindow: async function () {
+        openSub('lrc.html', 'LRC');
+      },
+      /** 参数映射：**开子窗口** —— 当前片段缩略图上拖范围 + 参数下拉 + 层勾选 + 筛选 + 预览/执行 */
+      paramWindow: async function () {
+        openSub('param.html', '参数映射');
+      },
+      /** 轨内复制：**开子窗口** —— 当前轨缩略图 + 两个色框（源范围/目标范围）+ 三个小节号 */
+      withinWindow: async function () {
+        openSub('within.html', '轨内复制');
+      },
+      /** 跨轨复制：**开子窗口** —— 所有轨道的预览 + 源/目标轨 + 可选范围 + 与轨内相同的复制内容 */
+      xcopyWindow: async function () {
+        openSub('xcopy.html', '跨轨复制');
+      },
+      /** 跨轨道复制音高线：**开子窗口** —— 源轨 → 目标轨（同一段时间）+ 三类内容 + 三步流程 */
+      pitchXWindow: async function () {
+        openSub('pitchx.html', '跨轨道复制音高线');
+      },
+      /** 音高线：**开子窗口** —— 改工程的流程页（保存工程 → 改工程 → 自动重新加载） */
+      pitchWindow: async function () {
+        openSub('pitch.html', '音高线');
+      },
+      /** 语调教：**开子窗口** —— 字卡片 + hover 选声调 → 保存工程 → 执行（写音高锚点）+ 恢复备份 */
+      toneWindow: async function () {
+        openSub('tone.html', '语调教');
+      },
+      /** 复制颤音模板：**开子窗口** —— 保存预设（一个音符的颤音）→ 批量选 → 操作（文件路线 + 备份/恢复） */
+      vibWindow: async function () {
+        openSub('vib.html', '复制颤音模板');
+      },
+      /** 生成二维码：**开子窗口** —— 缩略图 + 拖预览片段 + ①保存 ②预览/执行 ③恢复备份 */
+      qrWindow: async function () {
+        openSub('qr.html', '生成二维码');
+      },
+      /** 查找：**开子窗口** —— 结果框 + 缩略图预览（命中高亮）+ 上一项/序号/下一项 + 模式切换 */
+      harmonyWindow: async function () {
+        openSub('harmony.html', '和声');
+      },
+      findWindow: async function () {
+        openSub('find.html', '查找');
+      },
+      /** 谱面编辑器：**开子窗口** —— 两排谱 + 谱 → 音符的「生成」（窗口自带「撤回这一批」） */
+      notationWindow: async function () {
+        openSub('notation.html', '谱面编辑器');
+      },
+      copyLyrics: async function () {
+        var d = await runCall('lyric.copy', {});
+        var j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+        if (!d.ok || !j) { toast('复制歌词：失败 —— ' + (d.hint || '看完整面板的命令日志'), false); return; }
+        var arr = null;
+        ['notes', 'lyrics', 'items'].some(function (k) { if (Array.isArray(j[k])) { arr = j[k]; return true; } return false; });
+        if (!arr) { for (var k2 in j) { if (Array.isArray(j[k2])) { arr = j[k2]; break; } } }
+        if (!arr || !arr.length) { toast('复制歌词：没有选中音符', false); return; }
+        var txt = arr.map(function (x) { return x.lyric || ''; }).join(' ');
+        try {
+          await navigator.clipboard.writeText(txt);
+          toast('复制歌词：已复制 ' + arr.length + ' 个字到剪贴板', true);
+        } catch (e) {
+          toast('复制歌词：剪贴板写不进去（' + e.message + '）· 文本：' + txt, false);
+        }
+      },
+      pasteLyrics: async function (q) {
+        var txt = '';
+        try {
+          txt = await navigator.clipboard.readText();
+        } catch (e) {
+          toast('粘贴歌词：读不到剪贴板（' + e.message + '）—— 浏览器要剪贴板权限', false);
+          return;
+        }
+        if (!txt.trim()) { toast('粘贴歌词：剪贴板是空的', false); return; }
+        var d = await runCall('lyric.paste', { text: txt, mark: (q.values && q.values.mark) || '+' });
+        if (d.ok) toast('粘贴歌词：完成（' + (d.calls || []).length + ' 条命令）', true);
+        else toast('粘贴歌词：失败 —— ' + (d.hint || '看完整面板的命令日志'), false);
+      },
+    };
+
+    var DEFAULTS = { cols: 'auto', bh: 44, tipDelay: 700 };
+    var TIP_DELAY = DEFAULTS.tipDelay;
+    var tipTimer = null, hideTimer = null;
+    var BUSY = null;   // 同时只允许一个按钮在跑（exe 侧 CLI 是串行的）
+
+    function $(id) { return document.getElementById(id); }
+    function tierKey(q) { return 'acetool.thresh.' + q.tool; }
+    function tierOf(q) {
+      var i = parseInt(localStorage.getItem(tierKey(q)) || '0', 10);
+      return (i >= 0 && i < TIERS.length) ? i : 0;
+    }
+
+    function toast(text, ok) {
+      var el = $('htoast');
+      el.className = 'hint ' + (ok ? 'ok' : 'bad');
+      el.textContent = text;
+      el.hidden = false;
+      clearTimeout(el._t);
+      el._t = setTimeout(function () { el.hidden = true; }, ok ? 2500 : 5000);
+    }
+
+    /* ---------- 开子窗口：**一律走 exe 的 app 窗口**（用户 2026-10-17：「把所有打开的面板隐藏地址栏」）
+     *
+     * 原来这些 custom 动作都是 `window.open('页面.html', '名字', 'width=…,height=…')` ——
+     * 那是**浏览器弹窗**，`width/height` 还只在这里写死一份（与 exe 侧的尺寸表各说各话），
+     * 而且弹窗带地址栏 ⇒ 用户要的"没有地址栏"只做了一半（侧栏开的有、home 开的没有）。
+     * 现在：POST `/api/app-window {page}` ⇒ exe 用浏览器 app 模式开、尺寸取 `web.PanelSize(page)`。
+     *   · 回包 `hint` 非空（比如"没赶上定尺寸"）就**如实**显示出来，不假装完美；
+     *   · 接口彻底不可用（exe 关了 / 浏览器不认 app）时**退回** `window.open`，并在提示里说清楚
+     *     退回去的那个带地址栏 —— 宁可丑也不装作成功。
+     */
+    async function openSub(page, label) {
+      var say = '「' + label + '」窗口';
+      try {
+        var d = await (await fetch('/api/app-window', {
+          method: 'POST', headers: H, body: JSON.stringify({ page: page }),
+        })).json();
+        if (d && d.ok) {
+          toast('已打开' + say + (d.hint ? ' · ' + d.hint : ''), !d.hint);
+          return;
+        }
+        if (d && d.error) {
+          toast('开' + say + '失败：' + d.error, false);
+          return;
+        }
+      } catch (e) { /* 接口不通 ⇒ 走下面的兜底 */ }
+      var w = window.open(page, 'acetool-' + page.replace('.html', ''));
+      toast(w ? '已打开' + say + '（退回浏览器弹窗，这个带地址栏）'
+              : '开' + say + '失败（弹窗被浏览器拦了）', !!w);
+    }
+
+    /* ---------- 「撤回刚才的一批」（用户 2026-10-07） ----------
+     *
+     * 为什么要它：好几个一键按钮（连接音符 / 粘贴歌词 / 填词 / 分割轨道 / 批量替换音素…）
+     * 一下手就是**几十条 ACE 写命令**，而 ACE 一条写命令 = 一个撤销条目（真机实测：
+     * 连接音符 14 条、批量替换音素 76 条）⇒ 想退回原样得按几十次 Ctrl+Z。
+     *
+     * 做法：**不写反操作，用 ACE 自己的撤销栈**（`history undo`）——
+     * exe 在每个写工具跑之前记下游标、跑完把"这批压了几条"塞回包里（`d.undo`），
+     * 这里只负责：① 记住它 ② 点亮那颗键 ③ 点下去把这段游标之间的条目全退掉。
+     * 引擎自己知道怎么还原（连音素时序都能还），而且**只退我们写的**（署名对得上才退）。 */
+    var UNDO = null;   // {anchor, created, names, tool, label}
+
+    /** 所有 `/api/run` 都从这里走：顺手把回包里的撤回标记记下来（免得 5 处各抄一遍）。 */
+    async function runCall(toolId, values) {
+      var d = await (await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      })).json();
+      if (d && d.undo) setUndoMark(d.undo);
+      return d;
+    }
+
+    // ⭐ 热键在 exe 里直接跑时，页面拿不到回包 ⇒ 从 /api/undo 取"最近一批可撤回的"，
+    // 否则「撤回这一批」一直是灰的（用户 2026-10-22 报的）。
+    async function pullUndoFromExe() {
+      if (UNDO) return;
+      try {
+        var d = await (await fetch('/api/undo', { cache: 'no-store' })).json();
+        if (d && d.undo) setUndoMark(d.undo);
+      } catch (e) { }
+    }
+    function setUndoMark(mark) {
+      UNDO = (mark && mark.created > 0) ? mark : null;
+      var b = $('btnUndo');
+      if (!b) return;
+      b.disabled = !UNDO;
+      b.textContent = UNDO ? ('撤回这一批 · ' + UNDO.created) : '撤回这一批';
+      b.title = UNDO
+        ? ('撤回刚才那次「' + UNDO.label + '」压进撤销栈的 ' + UNDO.created + ' 条（走 ACE 自己的撤销）。' +
+           '你之后若又在 ACE 里动过手，它会停手并告诉你')
+        : '还没有可撤回的一批（先按一个会写工程的按钮）';
+    }
+
+    async function doUndo() {
+      if (!UNDO) { toast('没有可撤回的一批', false); return; }
+      if (BUSY) { toast('上一条还在跑（' + BUSY + '）—— 等它完成再点', false); return; }
+      var mark = UNDO;
+      BUSY = '撤回这一批';
+      var b = $('btnUndo');
+      var label = b.textContent;
+      // ⚠️ 大批量会慢：一条一条退、每条之前还要读一次栈守卫（~80ms×2）——
+      //    批量替换音素那种 76 条的批要十几秒，所以必须有个"在动"的样子，不能干等着。
+      b.disabled = true; b.textContent = '撤回中 …';
+      try {
+        var d = await runCall('history.undoBatch', {
+          anchor: String(mark.anchor), count: String(mark.created),
+          // ⚠️ 名字也带上：万一这中间又有别的写入占了栈顶（热键重放 / 另一个窗口），
+          //    exe 侧一比对名字就能**一条都不退**，而不是退错一批。
+          names: JSON.stringify(mark.names || []),
+          actor: '远程控制', dryRun: '0',
+        });
+        var j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+        if (!d.ok || !j) { toast('撤回：失败 —— ' + (d.hint || '看命令日志'), false); return; }
+        var n = (j.undone || []).length;
+        if (j.blocked) {
+          toast('撤回：一条都没退 —— ' + j.blocked, false);           // 顶上不是这一批（你在 ACE 里动过）
+        } else if (j.stopped) {
+          toast('撤回：退了 ' + n + ' 条就停手 —— ' + j.stopped, false); // 停手不等于失败，说清退到哪了
+        } else {
+          toast('撤回：退了 ' + n + ' 条，撤销栈回到 ' + j.cursorAfter, true);
+
+          setUndoMark(null);
+        }
+      } catch (e) {
+        toast('撤回：' + e.message, false);
+      } finally {
+        BUSY = null;
+        // 没退干净（被挡住 / 停手）⇒ 留着这颗键并**恢复原来的标签**（显示还剩几条），处理好可以再点
+        if (UNDO) { b.disabled = false; b.textContent = label; }
+      }
+    }
+
+    /* ---------- hover 注释（可交互：里面有滑块 / 输入框 / 勾选） ---------- */
+    /** 注释里那些控件的**当前值**（跑之前现取；没填过就用记住的） */
+    function fieldValues(q) {
+      var out = {};
+      (q.fields || []).forEach(function (f) {
+        var el = document.getElementById('hf_' + f.name);
+        var v = el ? el.value : (localStorage.getItem(fieldKey(q, f)) || '');
+        out[f.name] = v;
+      });
+      return out;
+    }
+    function fieldKey(q, f) { return 'acetool.field.' + q.tool + '.' + f.name; }
+
+    /** 查找框输入完就**报数**：范围里有多少个音符含这个音素（干跑，一个字节都不写）。
+     *  ⚠️ 走的是同一个工具的 Plan（`dryRun=1`），所以"报的数"和"真写会写几个"是同一套判据，
+     *  不会出现"预览说 3 个、点下去写了 5 个"。 */
+    var probeTimer = null, probeSeq = 0;
+    function probeCount(q) {
+      var v = fieldValues(q);
+      var st = document.getElementById('hfs');
+      if (!st) return;
+      if (!String(v.find || '').trim()) { st.textContent = ''; return; }
+      var mine = ++probeSeq;
+      st.textContent = '查…';
+      runCall(q.tool, { find: v.find, replace: v.replace || '', scope: 'auto', dryRun: '1' })
+        .then(function (d) {
+          var el = document.getElementById('hfs');
+          if (!el || mine !== probeSeq) return;   // 期间又改了 ⇒ 这份结果作废
+          var j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+          if (!d.ok || !j) { el.textContent = '查不了：' + (d.hint || '看命令日志'); return; }
+          if (!j.hit) { el.textContent = '范围 ' + j.scanned + ' 个音符 · 没有含「' + v.find + '」的'; return; }
+          el.textContent = '范围 ' + j.scanned + ' 个 · 含「' + v.find + '」' + j.hit
+            + ' · 会写 ' + j.willSet + (j.willFreeze ? '（冻结 ' + j.willFreeze + '）' : '')
+            + (j.skipped && j.skipped.length ? ' · 跳过 ' + j.skipped.length : '');
+        }).catch(function () {
+          var el = document.getElementById('hfs');
+          if (el && mine === probeSeq) el.textContent = '查不了（请求失败）';
+        });
+    }
+
+    /** 把注释框摆到按钮旁边，并**夹进窗口**（免得窄窗口时整块跑到屏幕外）。
+     *  ⚠️ 摆位只在弹出的那一刻算 —— 窗口被拉窄后不重算，钉住的菜单就会露一半在外面，
+     *     所以 resize 时要再摆一次（见下面的监听）。 */
+    function placeTip(btn, el) {
+      var r = btn.getBoundingClientRect(), t = el.getBoundingClientRect();
+      var left = Math.min(Math.max(6, r.left), Math.max(6, window.innerWidth - t.width - 6));
+      var top = r.bottom + 6;
+      if (top + t.height > window.innerHeight - 6) top = Math.max(6, r.top - t.height - 6);
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+    }
+    window.addEventListener('resize', function () {
+      var el = $('htip');
+      if (el && !el.hidden && MENU.btn) placeTip(MENU.btn, el);
+    });
+
+    function showTip(btn, q) {
+      var el = $('htip');
+      var idx = q.tier ? tierOf(q) : 0;
+      var rows = '';
+      (q.fields || []).forEach(function (f) {
+        var v = localStorage.getItem(fieldKey(q, f)) || '';
+        rows += '<div class="row"><label>' + f.label + '</label>' +
+          // 用户 2026-10-06：别让浏览器在输入框上弹「保存的信息 / 上次使用」历史下拉
+          '<input type="text" id="hf_' + f.name + '" autocomplete="off" autocapitalize="off"' +
+          ' autocorrect="off" spellcheck="false" style="width:' + (f.width || 80) + 'px"' +
+          ' placeholder="' + f.placeholder + '" value="' + v.replace(/"/g, '&quot;') + '"></div>';
+      });
+      if (q.fields && q.fields.length) {
+        rows += '<div class="row"><span class="stat" id="hfs"></span></div>';
+        // ⭐ 用户 2026-10-06：点按钮**展开菜单**，真正动手的是菜单里这个「替换」按钮
+        rows += '<div class="row act"><button type="button" id="hf_run">替换</button></div>';
+        // 撤回不在这里做了（用户 2026-10-07：「那这样音素里的撤回就不需要了」）：
+        // 顶栏那颗「撤回这一批」是**通用**的，而且走 ACE 自己的撤销栈 —— 连音素**时序**都能还原，
+        // 比原先那条"只还原符号、还原不了时序"的音素专用回退更彻底。
+      }
+      if (q.tier) {
+        rows += '<div class="row"><label>阈值</label>' +
+          '<input type="range" min="0" max="' + (TIERS.length - 1) + '" step="1" value="' + idx + '">' +
+          '<span class="val">' + TIERS[idx].name + '</span></div>';
+      }
+      el.innerHTML = '<div class="tt">' + q.tip + '</div>' + rows;
+      el.hidden = false;
+      (q.fields || []).forEach(function (f) {
+        var inp = document.getElementById('hf_' + f.name);
+        if (!inp) return;
+        inp.addEventListener('input', function () {
+          localStorage.setItem(fieldKey(q, f), inp.value);
+          if (q.probe) { clearTimeout(probeTimer); probeTimer = setTimeout(function () { probeCount(q); }, 350); }
+        });
+      });
+      if (q.tier) {
+        var rng = el.querySelector('input[type=range]'), val = el.querySelector('.val');
+        rng.addEventListener('input', function () {
+          idx = parseInt(rng.value, 10);
+          val.textContent = TIERS[idx].name;
+          localStorage.setItem(tierKey(q), String(idx));
+        });
+      }
+      placeTip(btn, el);
+      // ⚠️ 注释里一旦有输入框，**必须能点得进去**：不能一移开鼠标就收。
+      el.style.pointerEvents = 'auto';
+      // 值的记忆还在 ⇒ 一悬停就把数报出来（不用重新打字）
+      if (q.probe) probeCount(q);
+      // 菜单里那个「替换」按钮：**真正跑工具的是它**（点网格上的按钮只是展开菜单）
+      var run = document.getElementById('hf_run');
+      if (run && q.fields && q.fields.length) {
+        MENU.btn = btn; MENU.q = q;
+        run.addEventListener('click', function () { runQuick(btn, q); });
+      }
+    }
+
+    /* ---------- 菜单式按钮（点一下展开，不漏跑工具） ----------
+     * 用户 2026-10-06：「**点击按钮相当于展开菜单**，替换按钮都做在 hover 出来的菜单里」。
+     * 所以这类按钮（带 `fields`）的点击**不跑工具**，只把菜单钉住；跑由菜单里的按钮触发。 */
+    var MENU = { open: false, btn: null, q: null, at: 0 };
+    function openMenu(btn, q) {
+      MENU.open = true; MENU.at = Date.now();
+      showTip(btn, q);
+      hideMenuOff = true;                     // 钉住：鼠标移开也不收
+    }
+    function closeMenu() {
+      if (!MENU.open) return;
+      MENU.open = false; MENU.btn = null; MENU.q = null;
+      hideMenuOff = false;
+      var el = $('htip'); if (el) el.hidden = true;
+    }
+    var hideMenuOff = false;
+    function hideTip() {
+      if (hideMenuOff) return;                // 菜单钉住了：hover 的收起一律不生效
+      clearTimeout(tipTimer); tipTimer = null;
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () { var el = $('htip'); if (el) el.hidden = true; }, 180);
+    }
+    function armTip(btn, q) {
+      if (MENU.open) return;                  // 菜单开着就不再被 hover 抢
+      clearTimeout(tipTimer);
+      clearTimeout(hideTimer);
+      tipTimer = setTimeout(function () { showTip(btn, q); }, TIP_DELAY);
+    }
+
+    /** 跑一个不需要子界面的工具。⚠️ exe 侧把 CLI 调用**串行化**了（一个慢请求会堵住后面所有人），
+     *  所以这里：① 同时只让一个按钮进入"执行中"（其余点击直接说清，不排成一排灰着）；
+     *  ② 请求本身也带超时（超时恢复按钮并报错，不留一个永远转不回来的灰按钮）。 */
+    async function runQuick(btn, q) {
+      if (BUSY) { toast('上一条还在跑（' + BUSY + '）—— 等它完成再点', false); return; }
+      BUSY = q.label;
+      // ⚠️ 菜单钉着的时候**别收**：报数那一行（`#hfs`）和「回退这一批」都在菜单里，
+      //    一收用户就看不到"替换了几个"，也就点不到回退。
+      var el = $('htip'); if (el && !MENU.open) el.hidden = true;
+      clearTimeout(hideTimer);
+      btn.disabled = true;
+      var old = btn.textContent;
+      btn.textContent = q.label + ' …';
+      var timer = null;
+      try {
+        if (q.custom && CUSTOM[q.custom]) {
+          // 剪贴板 API 的 promise 在**用户回应权限提示之前不会 settle**（readText 尤其）⇒ 必须带超时
+          await Promise.race([
+            CUSTOM[q.custom](q),
+            new Promise(function (_, rej) {
+              setTimeout(function () { rej(new Error('超时（8 秒）—— 多半是在等浏览器剪贴板权限')); }, 8000);
+            }),
+          ]);
+          return;
+        }
+        var values = {};
+        Object.keys(q.values || {}).forEach(function (k) { values[k] = q.values[k]; });
+        if (q.tier && q.param) values[q.param] = String(TIERS[tierOf(q)].t);
+        // 注释里填的那些（查找/替换/干跑）——**现取**，这样用户改完不用等注释收起来
+        var fv = fieldValues(q);
+        Object.keys(fv).forEach(function (k) { values[k] = fv[k]; });
+        // 这个工具要求"查找"必须有内容（空查找 = 没有意义），先在本地挡一句
+        if (q.fields && q.fields.length && q.fields[0].name === 'find' && !String(values.find || '').trim()) {
+          toast(q.label + '：先在悬停说明里填「查找」要换成哪个音素', false);
+          BUSY = null; btn.disabled = false; btn.textContent = old;
+          return;
+        }
+        var d = await Promise.race([
+          runCall(q.tool, values),
+          new Promise(function (_, rej) {
+            timer = setTimeout(function () { rej(new Error('超时（90 秒）—— ACE 那条命令可能卡住了')); }, 90000);
+          }),
+        ]);
+        var tail = q.tier ? '（阈值 ' + TIERS[tierOf(q)].name + '）' : '';
+        if (d.ok) {
+          var j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+          // 「批量替换音素」这种带 `fields` 的按钮：**把成功数就地报在注释里**
+          //（用户要的："替换后显示替换成功数目"），同时留一条 toast。
+          if (j && j.done) {
+            var okN = j.done.length;
+            var st = document.getElementById('hfs');
+            if (st) {
+              st.textContent = '✅ 替换 ' + okN + ' 个'
+                + (j.willFreeze ? '（冻结 ' + j.willFreeze + '）' : '');
+            }
+            // 撤回交给**顶栏那颗通用键**（`d.undo` 由 exe 挂在回包上）——
+            // 这里只管把"替换了几个"报在菜单里。
+            toast(q.label + '：替换 ' + okN + ' 个', okN > 0);
+            return;
+          }
+          // 能报细账的就报细账（扫了几个 / 命中几个 / 会写几个 / 其中几个会被冻结）
+          if (j && typeof j.willSet === 'number') {
+            toast(q.label + (j.dryRun ? '（只报数，没写）' : '：完成') + ' —— 扫 ' + j.scanned + ' 个音符 · 命中 ' + j.hit
+              + ' · ' + (j.dryRun ? '会写 ' : '写了 ') + j.willSet + ' 个'
+              + (j.willFreeze ? '（其中 ' + j.willFreeze + ' 个本来没改写、这次会被冻结成 override）' : '')
+              + ' · 明细看主页面的命令日志', d.dryRun || !j.willSet ? false : true);
+          } else {
+            toast(q.label + '：完成' + tail + '（' + (d.calls || []).length + ' 条命令）', true);
+          }
+        } else {
+          toast(q.label + '：失败 —— ' + (d.hint || '看完整面板的命令日志'), false);
+        }
+      } catch (e) {
+        toast(q.label + '：' + e.message, false);
+      } finally {
+        clearTimeout(timer);
+        BUSY = null;
+        btn.disabled = false;
+        btn.textContent = old;
+      }
+    }
+
+    /* 按钮"点下去会发生什么"（用户 2026-10-15 要求像 `tone:'file'` 那样在**按钮上**分开）：
+         ① 开面板/子窗口 = `custom` 属于下面这 12 个 `*Window`
+         ② **立即执行**   = 既没有 `custom` 窗口、也没有 `fields` 菜单（点一下直接跑工具，会改工程）
+         ③ 菜单式        = 带 `fields`（点一下只展开菜单，不直接跑）
+         ④ 改工程文件    = `tone:'file'`（写入 `.acep`，琥珀）
+       颜色：开面板/菜单 = 蓝（`.live`）· **立即执行 = 绿（`.instant`）** · 改工程文件 = 琥珀（`.file`）。 */
+    var WINDOWS = {
+      rgbWindow: 1, lyricWindow: 1, lrcWindow: 1, paramWindow: 1, withinWindow: 1, xcopyWindow: 1,
+      pitchXWindow: 1, pitchWindow: 1, toneWindow: 1, vibWindow: 1, findWindow: 1, notationWindow: 1, qrWindow: 1, harmonyWindow: 1,
+    };
+
+    // ⭐ 用户 2026-10-20：「所有按钮的顺序和是否出现」——主面板与侧栏**同一份配置**。
+    // `custom: 'xcopyWindow'` 这种"开窗口"的按钮，侧栏那边的 key 是 `page:xcopy.html` ⇒ 这里要映射一下，
+    // 两边才同步得上（不能靠猜：两者本来是不同的 id 体系）。
+    var CUSTOM_PAGE = {
+      rgbWindow: 'rgb.html', lyricWindow: 'lyric.html', lrcWindow: 'lrc.html',
+      paramWindow: 'param.html', withinWindow: 'within.html', xcopyWindow: 'xcopy.html',
+      pitchXWindow: 'pitchx.html', pitchWindow: 'pitch.html', toneWindow: 'tone.html',
+      vibWindow: 'vib.html', findWindow: 'find.html', notationWindow: 'notation.html', qrWindow: 'qr.html', harmonyWindow: 'harmony.html',
+    };
+    /** 这颗按钮在 layout 里的 id（与 `rail.Item.KeyOf()` 同一套规则）。 */
+    function layKeyOf(q) {
+      if (q.key) return q.key;
+      if (q.page) return 'page:' + q.page;
+      if (q.custom && CUSTOM_PAGE[q.custom]) return 'page:' + CUSTOM_PAGE[q.custom];
+      if (q.tool) return 'tool:' + q.tool;
+      return '';
+    }
+    var LAYOUT = null;   // {order:[], hidden:[]}；null = 还没取到（保持原样，别让首页空一下）
+    async function loadLayout() {
+      try {
+        var j = await (await fetch('/api/layout', { cache: 'no-store' })).json();
+        LAYOUT = { order: j.order || [], hidden: j.hidden || [] };
+      } catch (e) { LAYOUT = null; }
+    }
+    /** 按 layout 排/过滤一份按钮数组（没被 order 提到的**保持原相对顺序**排在后面）。 */
+    function applyBtnOrder(list) {
+      if (!LAYOUT) return list;
+      var hid = {};
+      (LAYOUT.hidden || []).forEach(function (k) { hid[k] = true; });
+      var rank = {};
+      (LAYOUT.order || []).forEach(function (k, i) { rank[k] = i; });
+      // ⛔ 隐藏的按钮**不删，只藏**（`display:none`）：快捷键是靠 `[data-tool]` 点这一颗的，
+      // 真删了 DOM 就等于"隐藏后快捷键失效" —— 用户明确要求隐藏只影响显示（2026-10-20）。
+      return list
+        .map(function (q, i) { q._hid = !!hid[layKeyOf(q)]; return { q: q, i: i }; })
+        .sort(function (a, b) {
+          var ra = rank[layKeyOf(a.q)], rb = rank[layKeyOf(b.q)];
+          if (ra === undefined && rb === undefined) return a.i - b.i;
+          if (ra === undefined) return 1;
+          if (rb === undefined) return -1;
+          return ra - rb;
+        })
+        .map(function (x) { return x.q; });
+    }
+
+    function render() {
+      // ⚠️ 原始下标必须在**排序前**打在对象上：data-q 靠它回查 QUICK[...]
+      //（排序后再取 i 会拿到偏好顺序的下标 ⇒ 点按钮跑到别的工具）
+      QUICK.forEach(function (q, i) { q._idx = i; });
+      var pref = {};
+      QUICK_PREF.forEach(function (lab, i) { pref[lab] = i; });
+      var base = QUICK.slice().sort(function (a, b) {
+        var ra = pref[a.label], rb = pref[b.label];
+        if (ra === undefined && rb === undefined) return 0;
+        if (ra === undefined) return 1;
+        if (rb === undefined) return -1;
+        return ra - rb;
+      });
+      var html = applyBtnOrder(base).map(function (q, i) {
+        // `tone: 'file'` = 这一类按钮**改的是工程文件**（音高线那条流程）⇒ 换个颜色认出来
+        // （用户 2026-10-08：「home.html的按钮做一个区别」；不加字，只换色）
+        var opens = !!(q.custom && WINDOWS[q.custom]);
+        var instant = !q.fields && !opens;
+        var cls = 'fbtn live' + (instant ? ' instant' : '') + (q.tone === 'file' ? ' file' : '');
+        // 被设置页隐藏的按钮：**留在 DOM 里但 display:none**（快捷键要靠它点）
+        // 颜色之外只在 **hover 提示**里说清点下去会发生什么（界面上不加字）
+        var what = instant ? '点一下**立即执行**（会改工程；不满意用顶栏「撤回这一批」退回）'
+          : (q.fields ? '点一下展开菜单' : '点一下**开面板/子窗口**');
+        var shown = q.label;
+        if (q.rightCycle && q.values && q.values.side) {
+          shown = '选择' + ({ after: '之后', before: '之前', at: '当前' }[q.values.side] || '之后') + '音符';
+        }
+        var tipTxt = q.tip || '';
+        if (q.rightCycle && q.values && q.values.side) {
+          tipTxt = '当前：' + ({ after: '之后', before: '之前', at: '当前' }[q.values.side] || '之后') +
+            ' · 右键切换（之前 / 当前 / 之后） · ' + tipTxt;
+        }
+        var title = (tipTxt ? tipTxt + ' · ' : '') + what;
+        // `data-tool`：设置页那 20 个键位里"19 个按键"靠它找到**这一颗**（exe 发事件带工具 id）
+        return '<button class="' + cls + '" type="button" data-q="' + q._idx + '"' + (q.tool ? ' data-tool="' + q.tool + '"' : '') +
+          (q._hid ? ' style="display:none"' : '') + ' title="' +
+          title.replace(/"/g, '&quot;') + '">' + shown + '</button>';
+      }).join('');
+      // ⚠️ 2026-10-17 用户：「另外删14个空按钮」⇒ 原来这里会给 `COUNT` 个「内容1…内容N」占位格
+      //（`COUNT` 来自"页面布局"里那个"每页格数"）。占位格删掉，网格就是"有几颗按钮排几颗"。
+      $('hgrid').innerHTML = html;
+
+      document.querySelectorAll('[data-q]').forEach(function (b) {
+        var q = QUICK[parseInt(b.getAttribute('data-q'), 10)];
+        // ⭐ 菜单式按钮（带 `fields`）：**点一下展开菜单**，不直接跑工具 ——
+        // 跑由菜单里那个「替换」按钮触发（用户 2026-10-06）。
+        b.addEventListener('click', function () {
+          if (q.fields && q.fields.length) {
+            if (MENU.open && MENU.btn === b) { closeMenu(); } else { openMenu(b, q); }
+            return;
+          }
+          runQuick(b, q);
+        });
+        b.addEventListener('mouseenter', function () { armTip(b, q); });
+        b.addEventListener('mouseleave', hideTip);
+      });
+
+      // 点别处收菜单（点自己那个按钮的那一下由上面的 click 处理，别双重响应）
+      document.addEventListener('click', function (e) {
+        if (!MENU.open) return;
+        var t = e.target;
+        if (t && (t.closest && (t.closest('#htip') || t.closest('[data-q]')))) return;
+        closeMenu();
+      });
+      // Esc 收菜单
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+      // （占位格「内容N」的事件挂载已随「删 14 个空按钮」一起去掉）
+      var tip = $('htip');
+      tip.addEventListener('mouseenter', function () { clearTimeout(hideTimer); });
+      tip.addEventListener('mouseleave', hideTip);
+      document.querySelector('.wrap').addEventListener('scroll', hideTip);
+      window.addEventListener('resize', hideTip);
+    }
+
+    /** 自动列宽：**窄窗口要早点变成两列**（用户 2026-10-16：「这个宽如果再加大一点我认为应该双 btn 并排了」）。
+     *
+     *  背景：home 也能当**贴 ACE 的窄栏**用（app 模式的独立窗口，最窄 ≈119 逻辑像素）。
+     *  固定 `minmax(132px)` 时两列要 ≥280px 才出现 ⇒ 加宽到 150~250 都还是孤零零一列。
+     *  所以按窗口宽度分档：窄了就把"一列的最小宽度"压下来，让两列早点出现；宽窗口**一点不改**
+     *  （不然整块会摊成十几列）。
+     */
+    function colMin() {
+      var w = window.innerWidth;
+      if (w < 260) return 84;   // 极窄：还是一列（84×2 > w），但按钮跟着窄一点
+      if (w < 460) return 84;   // 窄栏/小窗：84×2=168 ⇒ 从 ~176 起就是两列
+      return 132;               // 正常窗口：保持原样
+    }
+
+    function applyLayout() {
+      var d = {};
+      Object.assign(d, DEFAULTS);
+      try { Object.assign(d, JSON.parse(localStorage.getItem('acetool.layout') || '{}')); } catch (e) { }
+      TIP_DELAY = d.tipDelay;
+      var g = $('hgrid');
+      g.style.gridTemplateColumns = d.cols === 'auto'
+        ? 'repeat(auto-fill,minmax(' + colMin() + 'px,1fr))' : 'repeat(' + d.cols + ',1fr)';
+      document.querySelectorAll('.fbtn').forEach(function (b) { b.style.minHeight = d.bh + 'px'; });
+    }
+    // 拉宽/拉窄时**重新分列**（不然列数是打开那一刻定死的）
+    window.addEventListener('resize', applyLayout);
+
+    // 「撤回这一批」：初始是灰的（`setUndoMark(null)` 把标题也写成"还没有可撤回的一批"）
+    setUndoMark(null);
+    $('btnUndo').addEventListener('click', doUndo);
+  // 右键循环方向（用户 2026-10-24）：用**事件委托**，渲染重建 DOM 后依然有效
+  document.addEventListener('contextmenu', function (ev) {
+    var b = ev.target && ev.target.closest && ev.target.closest('[data-q]');
+    if (!b) return;
+    var q = QUICK[parseInt(b.getAttribute('data-q'), 10)];
+    if (!q || !q.rightCycle || !q.values) return;
+    ev.preventDefault();
+    var i = q.rightCycle.indexOf(q.values.side);
+    q.values.side = q.rightCycle[(i + 1) % q.rightCycle.length];
+    render();
+  });
+
+
+    /* ⚙ = 设置页。📌 置顶**由 `ontop.js` 接管**（2026-10-16）：
+       那颗按钮原来是个假的（点了只弹「「置顶」还没做」）—— 用户要求「所有面板包括 home 和
+       所有打开的都加 📌」时一并做成真的，做法见 `ontop.js` 顶部注释。 */
+    $('btnSettings').addEventListener('click', function () { location.href = 'settings.html'; });
+
+    /* ⚠️ 2026-10-17 用户：「btnAppWin可以删了」⇒ 这块「窗」的点击处理整段删掉。
+       `/api/app-window` 本身**留着**（托盘「打开面板」、细条「展开为 web 页」、
+       设置页「打开主页面」、home 里那些子窗口 `openSub()` 都还在用它）。 */
+
+    /* 「侧」= **web 窗口 ⇄ 原生侧栏** 的切换（用户 2026-10-16：「做一个 web 和侧栏的切换按钮就行了」）。
+       侧栏 = 那条贴 ACE 的原生汉字细条（`internal/rail`），由 exe 运行时起停（`POST /api/rail {enable}`）。
+       ⚠️ 起侧条现在带着 §72 那条未解决问题的风险（建了它 exe 可能自己退出）⇒ 回包里的 `warn` 如实显示。 */
+    async function paintRailBtn() {
+      try {
+        var d = await (await fetch('/api/rail', { cache: 'no-store' })).json();
+        var on = !!(d && d.running);
+        var b = $('btnRail');
+        // ⭐ 用户 2026-10-20：这颗键**永远叫「侧」**（原来是"侧栏在跑就显示 web"）——
+        // 它是"切到侧栏/切回 web 窗口"的开关，名字不该随状态变。
+        b.textContent = '侧';
+        b.classList.toggle('on', on);
+        b.title = on ? '侧栏在跑 —— 点它停掉侧栏、切回 web 窗口' : '切到 ACE 侧栏（web 窗口会关掉）';
+      } catch (e) { /* 问不到就保持原样 */ }
+    }
+    $('btnRail').addEventListener('click', async function () {
+      var b = $('btnRail');
+      b.disabled = true;
+      try {
+        var cur = await (await fetch('/api/rail', { cache: 'no-store' })).json();
+        var want = !(cur && cur.running);
+        var d = await (await fetch('/api/rail', {
+          method: 'POST', headers: H, body: JSON.stringify({ enable: want }),
+        })).json();
+        if (d.ok) {
+          toast(d.message + (d.warn ? ' · ⚠️ ' + d.warn : ''), true);
+          // 切到侧栏 ⇒ 顺手把 web 窗口那条路也摆好（用户想回来时点"窗"就行）
+          if (want && cur && cur.running === false) { /* 侧栏已起，什么都不用做 */ }
+        } else {
+          toast('切侧栏失败：' + (d.error || '未知原因'), false);
+        }
+        paintRailBtn();
+      } catch (e) {
+        toast('切侧栏失败：' + ((e && e.message) || e), false);
+      } finally {
+        b.disabled = false;
+      }
+    });
+    paintRailBtn();
+
+    async function status() {
+      var dot = $('hdot'), txt = $('hstat');
+      try {
+        var d = await (await fetch('/api/selfcheck', { cache: 'no-store' })).json();
+        if (!d.online) throw new Error('offline');
+        dot.className = 'dot on';
+        txt.textContent = [(d.version && d.version.forAce) || '', (d.project && d.project.projectName) || '未命名']
+          .filter(Boolean).join(' · ');
+      } catch (e) {
+        dot.className = 'dot';
+        txt.textContent = '未连接';
+      }
+    }
+
+    function reportSize() {
+      fetch('/api/viewport', {
+        method: 'POST', headers: H,
+        body: JSON.stringify({
+          w: window.innerWidth, h: window.innerHeight,
+          ow: window.outerWidth, oh: window.outerHeight,
+          sw: (screen && screen.width) || 0, sh: (screen && screen.height) || 0,
+        }),
+      }).catch(function () { });
+    }
+    window.addEventListener('resize', reportSize);
+
+    /* ---------- 主页面键位（设置页里那 20 个位置，用户 2026-10-17） ----------
+     *
+     * 那 20 条是「打开主页面」+ 主页面这 19 颗按钮。它们**只能是系统级**：
+     * 键要在 ACE 里干活时按响，而"点按钮"这件事只有页面能做 ⇒ exe 收到热键后发一条事件
+     * `{kind:'quick', action:'quick.<tool id>', text:'<tool id>'}`，这里收到事件去点那颗按钮。
+     *
+     * 为什么不再做一套页面内 keydown：同一套绑定**只走一条路**才不会"按一次跑两遍"。
+     * exe 那边 `RegisterHotKey` 注册上就把键系统级吞了 ⇒ 页面根本收不到 keydown。
+     *
+     * `window.HomeQuick` 也暴露给自检用（无头浏览器里直接 `HomeQuick.run('find.notes')`
+     * 验"点按钮"这条链路，不用真去按组合键）。
+     */
+    function buttonOfTool(tool) {
+      var idx = -1;
+      QUICK.forEach(function (q, i) { if (q.tool === tool && idx < 0) idx = i; });
+      if (idx < 0) return null;
+      return $('hgrid').querySelector('[data-q="' + idx + '"]');
+    }
+
+    function runQuickByTool(tool) {
+      // ⭐ 用户 2026-10-21：「撤回这一批」也要能按快捷键 —— 它不是 QUICK 里的工具按钮，
+      // 而是顶栏那颗，走页面持有的锚点（`history.undoBatch`），所以单独接。
+      if (tool === 'undo.batch') { doUndo(); return '已触发「撤回这一批」'; }
+      var btn = buttonOfTool(tool);
+      if (!btn) return '不认识的按钮：' + tool;
+      btn.click(); // 走的就是真按钮那条路（菜单 / 子窗口 / 直接跑，全一致）
+      return '已触发「' + btn.textContent + '」';
+    }
+
+    var EV_SINCE = -1;
+    async function pollQuickEvents() {
+      try {
+        var url = '/api/events' + (EV_SINCE >= 0 ? '?since=' + EV_SINCE : '');
+        var d = await (await fetch(url, { cache: 'no-store' })).json();
+        if (EV_SINCE < 0) { EV_SINCE = d.lastSeq || 0; return; } // 第一次只对齐，不回放历史
+        EV_SINCE = d.lastSeq || EV_SINCE;
+        (d.events || []).forEach(function (ev) {
+          var a = ev.action || '';
+          // ⭐ 2026-10-20：设置页改了「按钮顺序与显示」⇒ 就地重排（不用刷新）
+          if (ev.kind === 'layout') { loadLayout().then(function () { render(); applyLayout(); }); return; }
+          if (a.indexOf('quick.') !== 0 || a === 'quick.open') return;
+          var msg = runQuickByTool(a.slice(6));
+          // 热键在 exe 里直接跑完 ⇒ 这一批的撤回标记只存在 exe 那边，拉一次
+          setTimeout(pullUndoFromExe, 1500);
+          if (msg.indexOf('不认识') === 0) toast(msg, false);
+        });
+        if (!UNDO) pullUndoFromExe();
+      } catch (e) { /* 轮询失败就当这轮没事件（下一次还会来） */ }
+    }
+
+    window.HomeQuick = { run: runQuickByTool, poll: pollQuickEvents };
+
+    // ⭐ 2026-10-20：先取「按钮顺序与显示」再画（取不到就按出厂顺序，不阻塞）。
+    loadLayout().then(function () { render(); applyLayout(); });
+    status();
+    reportSize();
+    pollQuickEvents();
+    pullUndoFromExe();
+    setInterval(pollQuickEvents, 800);
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

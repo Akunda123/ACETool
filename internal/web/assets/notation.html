@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>谱面编辑器</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:38px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600;letter-spacing:.3px}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:4px 10px;font:inherit;font-size:12px;cursor:pointer;flex:0 0 auto}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn.danger{border-color:var(--bad,#e06c75);color:var(--bad,#e06c75)}
+    /* 「撤回这一批」：没东西可退时是灰的（不假装能退），有得退时用警示色 */
+    .undobtn{flex:0 0 auto;border:1px solid var(--line,#3f434a);background:transparent;color:var(--dim,#9498a0);
+      border-radius:6px;padding:3px 9px;font:inherit;font-size:11.5px;line-height:1.2;cursor:pointer}
+    .undobtn:disabled{opacity:.55;cursor:default}
+    .undobtn:not(:disabled){border-color:var(--warn,#d9a441);color:var(--warn,#d9a441)}
+    .undobtn:not(:disabled):hover{background:rgba(217,164,65,.14)}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px}
+    #htoast{position:fixed;left:10px;right:10px;bottom:10px;z-index:70;background:var(--panel,#2f333a);
+      border:1px solid var(--line,#3f434a);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--fg,#d6dae0)}
+    #htoast.bad{border-color:var(--bad,#e06c75);color:var(--bad,#e06c75)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>谱面编辑器</h1>
+    <span class="stat"><span class="dot" id="hdot"></span><span id="hstat">读取中…</span></span>
+    <span class="sp"></span>
+    <!-- ⭐ 谱 → 音符的生成是**写**操作 ⇒ 这个独立窗口也得有「撤回这一批」
+         （与主页面那颗同一套身份：游标锚点 + 署名 + 名字守卫，见 HANDOVER §42.3） -->
+    <button class="undobtn" id="btnUndo" type="button" disabled title="还没有可撤回的一批（先按「生成并写进 ACE」）">撤回这一批</button>
+  </div>
+
+  <div class="wrap">
+    <div id="nt-host"></div>
+  </div>
+  <div id="htoast" hidden></div>
+
+  <script src="notation-glyphs.js"></script>
+  <script>
+    /* 这个独立窗口只用到 `notation.js` 里的 NotationPanel，所以**不加载 app.js**（那是整个主面板）。
+       但 notation.js 依赖 app.js 里的 `postRun` ⇒ 在这里给它一个**最小替身**（行为逐字一致：
+       非 2xx 抛错、顺手把回包上的 `undo` 标记接过来点亮「撤回这一批」）。 */
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var API_HEADER = 'X-ACETool';
+    var $ = function (id) { return document.getElementById(id); };
+    var UNDO = null, BUSY = null, hideTimer = 0;
+
+    function toast(msg, ok) {
+      var el = $('htoast');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = ok ? '' : 'bad';
+      el.hidden = false;
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () { el.hidden = true; }, ok ? 2600 : 5200);
+    }
+
+    async function postRun(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 保持 null，用 HTTP 状态报错 */ }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      if (data && data.undo) setUndoMark(data.undo);   // ⭐ 这一批能撤回
+      return data;
+    }
+
+    function setUndoMark(mark) {
+      UNDO = (mark && mark.created > 0) ? mark : null;
+      var b = $('btnUndo');
+      if (!b) return;
+      b.disabled = !UNDO;
+      b.textContent = UNDO ? ('撤回这一批 · ' + UNDO.created) : '撤回这一批';
+      b.title = UNDO
+        ? ('撤回刚才那次「' + UNDO.label + '」压进撤销栈的 ' + UNDO.created + ' 条（走 ACE 自己的撤销）。' +
+           '你之后若又在 ACE 里动过手，它会停手并告诉你')
+        : '还没有可撤回的一批（先按「生成并写进 ACE」）';
+    }
+
+    async function doUndo() {
+      if (!UNDO) { toast('没有可撤回的一批', false); return; }
+      var mark = UNDO, b = $('btnUndo'), label = b.textContent;
+      BUSY = '撤回这一批';
+      b.disabled = true; b.textContent = '撤回中 …';
+      try {
+        var d = await postRun('history.undoBatch', {
+          anchor: String(mark.anchor), count: String(mark.created),
+          names: JSON.stringify(mark.names || []), actor: '远程控制', dryRun: '0',
+        });
+        var j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+        if (!d.ok || !j) { toast('撤回：失败 —— ' + (d.hint || '看命令日志'), false); return; }
+        var n = (j.undone || []).length;
+        if (j.blocked) {
+          toast('撤回：一条都没退 —— ' + j.blocked, false);
+        } else if (j.stopped) {
+          toast('撤回：退了 ' + n + ' 条就停手 —— ' + j.stopped, false);
+        } else {
+          toast('撤回：退了 ' + n + ' 条，撤销栈回到 ' + j.cursorAfter, true);
+          setUndoMark(null);
+        }
+      } catch (e) {
+        toast('撤回：' + e.message, false);
+      } finally {
+        BUSY = null;
+        if (UNDO) { b.disabled = false; b.textContent = label; }
+      }
+    }
+
+    async function status() {
+      var dot = $('hdot'), txt = $('hstat');
+      try {
+        var d = await (await fetch('/api/selfcheck', { cache: 'no-store' })).json();
+        if (!d.online) throw new Error('offline');
+        dot.className = 'dot on';
+        txt.textContent = [(d.version && d.version.forAce) || '', (d.project && d.project.projectName) || '未命名']
+          .filter(Boolean).join(' · ');
+      } catch (e) {
+        dot.className = 'dot'; txt.textContent = '未连接';
+      }
+    }
+  </script>
+
+  <script src="notation.js"></script>
+  <script>
+    // 把面板挂进来（主面板那一页也是这两步：`html()` 生成 + `bind()` 接线）
+    $('nt-host').innerHTML = window.NotationPanel.html();
+    window.NotationPanel.bind();
+    setUndoMark(null);
+    $('btnUndo').addEventListener('click', doUndo);
+    // ⭐ 用户 2026-10-08：「右上角完整面板删了」—— 这个子窗口不再挂回主面板的深链
+    //    （要回主面板就从主面板那边开；窗口里只留这一件事：谱 → 音符）。
+    status();
+    setInterval(status, 15000);
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

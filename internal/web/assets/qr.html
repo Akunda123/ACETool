@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="icon.svg">
+<title>生成二维码</title>
+<style>
+  :root{--bg:#1b1e24;--inset:#242830;--line:#3f434a;--fg:#d6dae0;--dim:#9498a0;--accent:#1a73e8;--ok:#5ebd7a;--bad:#d9534f;--warn:#d9a441}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+  .wrap{padding:12px 14px 24px;display:grid;gap:8px;max-width:900px}
+  .warn{border:1px solid #5a4a24;background:#2c2818;color:#e8d9b0;border-radius:6px;padding:8px 10px;font-size:12px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .lb{color:var(--dim);font-size:12px;min-width:34px}
+  input,select{background:var(--inset);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:4px 8px;font:inherit}
+  input[type=number]{width:92px}
+  .msg{color:var(--dim);font-size:12px}
+  .step{display:flex;align-items:center;gap:8px;margin:4px 0}
+  .step b{flex:0 0 auto;color:var(--ok);font-weight:500}
+  .btn{background:var(--inset);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px 12px;font:inherit;cursor:pointer}
+  .btn:disabled{opacity:.45;cursor:default}
+  #mmwrap{border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--inset)}
+  #mm{display:block;width:100%;height:150px;touch-action:none;cursor:crosshair}
+  .legend{font-size:11.5px;color:var(--dim)}
+  .out{margin-top:6px;white-space:pre-wrap;word-break:break-word;background:var(--inset);border:1px solid var(--line);
+       border-radius:6px;padding:8px 10px;font:12px/1.55 ui-monospace,Consolas,monospace;max-height:240px;overflow:auto}
+  .out.ok{color:#bfe6c9} .out.bad{color:#f0b6b3}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="warn">改工程走的是**文件**：直接改写当前工程的 <b>.acep</b>。
+      顺序 ① 保存工程 → ② 执行（建模板片段 → 写文件 → 让 ACE 重开）→ ③ 恢复备份。
+      ⚠️ 让 ACE 重开工程会**把撤销栈清掉** ⇒ 后悔只能靠 ③「恢复备份」。</div>
+
+    <div class="row">
+      <span class="lb">文本</span>
+      <input id="text" style="flex:1 1 320px" placeholder="短文本（v1 21×21 = 224 音）" autocomplete="off">
+    </div>
+    <div class="row">
+      <span class="lb">形态</span>
+      <select id="mode">
+        <option value="qr2d">2D 图（Sing 轨，改工程文件）</option>
+        <option value="instrument">2D 图（Instrument 轨，CLI）</option>
+        <option value="sing">顺序旋律（歌声轨，能唱）</option>
+      </select>
+      <span class="lb">模块</span><input type="number" id="moduleTicks" min="2" step="1" placeholder="60">
+      <span class="lb">基准音</span><input type="number" id="basePitch" min="10" max="100" step="1" placeholder="48">
+    </div>
+    <div class="row">
+      <span class="lb">目标轨</span><select id="track"></select>
+      <span class="msg" id="posInfo">预览框：0 tick</span>
+    </div>
+
+    <div id="mmwrap"><canvas id="mm"></canvas></div>
+    <div class="row legend">
+      <span><i style="display:inline-block;width:10px;height:10px;background:#5fd39a;border-radius:2px;margin-right:4px"></i>二维码预览</span>
+      <span class="sp"></span>
+      <span>在图上拖 = 移动预览框（横向改位置、纵向换轨）</span>
+    </div>
+
+    <div class="step"><b>①</b>
+      <button class="btn" id="p1" type="button">保存工程</button>
+      <span class="msg" id="p1stat">未执行</span>
+    </div>
+    <div class="step"><b>②</b>
+      <button class="btn" id="prev" type="button" disabled>预览（只看会改什么，不写文件）</button>
+      <button class="btn" id="p2" type="button" disabled>执行（改工程文件）</button>
+      <span class="msg" id="p2stat">先做第 ① 步</span>
+    </div>
+    <div class="step"><b>③</b>
+      <button class="btn" id="undo" type="button" disabled>恢复备份</button>
+      <span class="msg" id="ustat">还没有备份</span>
+    </div>
+    <div class="msg" id="ppath"></div>
+
+    <div class="out" id="out">还没开始。</div>
+  </div>
+
+  <script src="canvasmap.js"></script>
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    var S = { mm: null, busy: false, path: '', backup: '', pos: 0, track: 0, grid: null, dur: 0 };
+
+    async function postRun(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      return data;
+    }
+    function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
+    function say(text, cls) {
+      var el = $('out');
+      el.className = 'out' + (cls ? ' ' + cls : '');
+      el.textContent = text;
+    }
+    function busy(on) {
+      S.busy = on;
+      $('p1').disabled = on;
+      $('prev').disabled = on || !S.path;
+      $('p2').disabled = on || !S.path;
+    }
+    function mode() { return $('mode').value; }
+    function toolId() { return mode() === 'qr2d' ? 'qr.acep' : 'qr.apply'; }
+
+    /* ---------- 缩略图：所有轨各一行（当前轨高亮）+ 二维码预览框 ---------- */
+    function tracks() { return ((S.mm && S.mm.tracks) || []).filter(function (t) { return (t.clips || []).length; }); }
+    // minimap 的 JSON 用 trackIndex；别用 t.index（undefined 会让工具收不到轨道号）
+    function tid(t) { return (t && t.trackIndex !== undefined) ? t.trackIndex : (t ? t.index : 0); }
+    var MM = null;
+    var MM = null;
+        // 读不到数据时把画布画成一句话（否则它停在默认 300x150，看着像坏了）
+    function mmEmpty(msg) {
+      try {
+        var el = document.getElementById('mm');
+        if (!el || !window.CanvasMap || !CanvasMap.draw) return;
+        CanvasMap.draw(el, null, { emptyText: msg });
+      } catch (e) { }
+    }
+
+    function draw() {
+      var mm = S.mm, el = $('mm');
+      if (!el) return;
+      if (!mm || !window.CanvasMap) return;
+      MM = window.CanvasMap.draw(el, mm, {
+        hi: [S.track],
+        picks: S.grid ? [{ begin: S.pos, end: S.pos + S.dur, color: 'rgba(95,211,154,.32)', stroke: '#5fd39a' }] : [],
+      });
+    }
+
+    /* 在图上拖 = 移动预览框（横向改 tick、纵向换轨） */
+    function pxOf(ev) { var r = $('mm').getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; }
+    function tickAtPx(px) {
+      var mm = S.mm, cssW = $('mm').clientWidth || 620, pad = 8, w = Math.max(1, cssW - pad * 2);
+      var total = 1920;
+      (mm.tracks || []).forEach(function (t) { (t.clips || []).forEach(function (cl) { total = Math.max(total, cl.end); }); });
+      if (mm.durationTick) total = Math.max(total, mm.durationTick);
+      total = Math.max(total, S.pos + S.dur);
+      return Math.max(0, Math.round((px - pad) / w * total));
+    }
+    function trackAtPy(py) {
+      var rows = tracks(), ROW = 34, RULER = 16;
+      var i = Math.max(0, Math.min(rows.length - 1, Math.floor((py - RULER) / ROW)));
+      return rows.length ? tid(rows[i]) : 0;
+    }
+    $('mm').addEventListener('pointerdown', function (ev) {
+      $('mm').setPointerCapture(ev.pointerId);
+      S.drag = true;
+      var p = pxOf(ev);
+      S.pos = tickAtPx(p.x); S.track = trackAtPy(p.y); $('track').value = String(S.track); draw();
+    });
+    $('mm').addEventListener('pointermove', function (ev) {
+      if (!S.drag) return;
+      var p = pxOf(ev);
+      S.pos = tickAtPx(p.x); S.track = trackAtPy(p.y); $('track').value = String(S.track); draw();
+    });
+    $('mm').addEventListener('pointerup', function () { S.drag = false; });
+    $('mm').addEventListener('pointercancel', function () { S.drag = false; });
+    window.addEventListener('resize', draw);
+
+    async function loadMM() {
+      try {
+        var d = await postRun('view.minimap', { notes: '200' });
+        if (!d.ok) { say('拿不到工程缩略图：' + (d.hint || ''), 'bad'); return; }
+        S.mm = firstJSON(d);
+        var rows = tracks(), sel = $('track');
+        sel.innerHTML = rows.map(function (t) {
+          return '<option value="' + tid(t) + '">' + tid(t) + ' ' + (t.name || t.type || '') + '</option>';
+        }).join('');
+        S.track = rows.length ? tid(rows[0]) : 0;
+        sel.value = String(S.track);
+        draw();
+      } catch (e) { say('拿不到工程缩略图：' + e.message, 'bad'); }
+    }
+    $('track').addEventListener('change', function () { S.track = parseInt($('track').value, 10) || 0; draw(); });
+
+    /* ---------- ① 保存工程 ---------- */
+    $('p1').addEventListener('click', async function () {
+      if (S.busy) return;
+      busy(true);
+      $('p1stat').textContent = '保存中…';
+      say('① 保存工程…');
+      try {
+        var d = await postRun('project.save', { dryRun: '0' });
+        var p = firstJSON(d).savedPath || '';
+        var pd = await postRun('project.path', {});
+        var pj = firstJSON(pd);
+        S.path = p || pj['工程文件路径'] || '';
+        $('p1stat').textContent = d.ok ? '已保存' : ('失败：' + (d.hint || ''));
+        $('ppath').textContent = S.path ? ('工程文件：' + S.path) : '';
+        if (!S.path) {
+          say('① 没拿到路径：这份工程**还没保存过**（临时工程）。\n' +
+            '请你在 ACE 里自己**保存 / 另存为**一个工程包（存到哪由你定），存好之后再点一次 ①。', 'bad');
+        } else {
+          say('① 已保存。工程文件：' + S.path + (pj['未保存改动'] ? ('\n未保存改动：' + pj['未保存改动']) : '') +
+            '\n\n下一步：点 ② 预览或执行。', 'ok');
+        }
+      } catch (e) {
+        say('① 保存失败：' + e.message, 'bad');
+        $('p1stat').textContent = '失败';
+      } finally {
+        busy(false);
+        $('p2stat').textContent = S.path ? '可以执行了' : '先做第 ① 步';
+      }
+    });
+
+    /* ---------- ② 预览 / 执行 ---------- */
+    function values(dry) {
+      var v = { text: $('text').value, trackIndex: String(S.track), posTicks: String(S.pos) };
+      if (($('moduleTicks').value || '').trim()) v.moduleTicks = $('moduleTicks').value.trim();
+      if (($('basePitch').value || '').trim()) v.basePitch = $('basePitch').value.trim();
+      if (toolId() === 'qr.acep') v.path = S.path;
+      else v.mode = mode();
+      if (dry) v.dryRun = '1';
+      return v;
+    }
+    async function applyQR(dry) {
+      if (S.busy) return;
+      if (!$('text').value.trim()) { say('先填文本', 'bad'); return; }
+      busy(true);
+      $('p2stat').textContent = dry ? '预览中…' : '改文件中…';
+      say(dry ? '② 预览：只看会改什么（不写文件、不备份）…' : '② 改工程文件…（先备份，再原地替换）');
+      try {
+        var d = await postRun(toolId(), values(dry));
+        if (!d.ok) { say((dry ? '② 预览失败：' : '② 失败：') + (d.hint || ''), 'bad'); $('p2stat').textContent = '失败'; return; }
+        var r = firstJSON(d);
+        if (r.grid) { S.grid = r.grid; S.dur = r.clipDur || r.clipTicks || 0; draw(); }
+        var L = [dry ? '② 预览（没有写任何字节）' : '② 已改工程文件'];
+        if (r['尺寸']) L.push('尺寸：' + r['尺寸'] + ' · 暗模块 ' + r['暗模块'] + ' · 音符 ' + r['音符'] + ' · 片段长 ' + r['片段长'] + ' tick');
+        if (r['轨道']) L.push('轨道：' + r['轨道'] + (r['片段'] ? (' · 片段 ' + r['片段']) : ''));
+        if (r['备份']) { L.push('备份：' + r['备份']); S.backup = r['备份']; $('undo').disabled = false; $('ustat').textContent = '可恢复：' + r['备份']; }
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        (r['步骤'] || []).forEach(function (c) { L.push('· ' + c); });
+        if (r['提示']) L.push(r['提示']);
+        if (dry) { say(L.join('\n'), ''); $('p2stat').textContent = '预览完成（没写）'; return; }
+        $('p2stat').textContent = '已写入';
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+        var od = await postRun('project.open', { path: S.path, dryRun: '0' });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : ('\n\n重新加载**失败**：' + (od.hint || '') + '\n（手动在 ACE 里重新打开这份工程）')),
+          od.ok ? 'ok' : 'bad');
+        loadMM();
+      } catch (e) {
+        say((dry ? '② 预览失败：' : '② 失败：') + e.message, 'bad');
+        $('p2stat').textContent = '失败';
+      } finally {
+        busy(false);
+      }
+    }
+    // 这个页面不会自动读工程（要先点预览），但画布空着会被当成坏了
+  mmEmpty('点「预览」先看效果（ACE 没开时读不到数据）'); /* qrEmptyOnLoad */
+  $('prev').addEventListener('click', function () { applyQR(true); });
+    $('p2').addEventListener('click', function () { applyQR(false); });
+
+    /* ---------- ③ 恢复备份 ---------- */
+    $('undo').addEventListener('click', async function () {
+      if (S.busy || !S.path || !S.backup) return;
+      busy(true);
+      $('ustat').textContent = '恢复中…';
+      say('③ 恢复备份…');
+      try {
+        var d = await postRun('project.restore', { path: S.path, backup: S.backup, dryRun: '0' });
+        var r = firstJSON(d);
+        $('ustat').textContent = '已恢复';
+        var L = ['已把备份换回工程文件', '用哪份：' + (r['用哪份备份'] || ''), '备份时间：' + (r['备份时间'] || '')];
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…', 'ok');
+        var od = await postRun('project.open', { path: S.path, dryRun: '0' });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : ('\n\n重新加载失败：' + (od.hint || ''))), od.ok ? 'ok' : 'bad');
+        loadMM();
+      } catch (e) {
+        $('ustat').textContent = '失败';
+        say('③ 恢复失败：' + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    });
+
+    loadMM();
+  </script>
+</body>
+</html>

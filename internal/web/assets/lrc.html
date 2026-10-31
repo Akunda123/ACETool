@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>LRC 导出</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75)}
+    .dot.on{background:var(--ok,#5ebd7a)}
+    .stats{flex:0 0 auto;display:flex;align-items:baseline;gap:14px;padding:6px 10px;font-size:12px;
+      background:var(--inset,#242830);border-bottom:1px solid var(--line,#3f434a)}
+    .stats b{color:var(--fg,#d6dae0);font-weight:600;font-variant-numeric:tabular-nums}
+    .stats span{color:var(--dim,#9498a0)}
+    .stats .clip{margin-left:auto;color:var(--dim,#9498a0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42%}
+    .opts{flex:0 0 auto;padding:5px 10px;font-size:12px;border-bottom:1px solid var(--line,#3f434a)}
+    .optrow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-height:26px}
+    /* ⚠️ 每个选项都**不许伸缩**（第一版没写 `flex:0 0 auto`，数字框被拉到 180 px 宽）。
+       ⚠️⚠️ 还必须写 `min-width:0`：`style.css` 给所有 `input[type=number]` 定了
+       **`min-width:180px`**，而 `min-width` **压过 `width`** —— 只写 `width:62px`（哪怕内联）都没用，
+       量出来就是 180 px。这条是拿 CDP 在页面里量出来的，不是看出来的。 */
+    .opts>*{flex:0 0 auto}
+    .optrow>*{flex:0 0 auto}
+    .opts label{display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--fg,#d6dae0)}
+    .opts input[type=checkbox]{accent-color:var(--accent,#1a73e8);width:auto}
+    .opts input[type=number]{background:var(--inset,#242830);border:1px solid var(--line,#3f434a);color:var(--fg,#d6dae0);
+      border-radius:5px;padding:3px 5px;font:inherit;font-size:12px;width:62px;min-width:0}
+    /* 「忽略短间隙」用**和主页「连接音符」同一张档位表 + 同一个滑块**（用户 2026-10-05：
+       「短间隙阈值选择和连接音符一致」）。第 0 档在这边叫「不忽略」（= 原脚本：有任何缝就换行），
+       在连接音符那边叫「不设限」；其余 8 档的**音符时值与名字逐字相同**（check-ui 有对表断言）。 */
+    .opts .tier{gap:7px}
+    .opts .tier input[type=range]{width:150px;min-width:0;accent-color:var(--accent,#1a73e8);height:16px;margin:0}
+    .opts .tier b{color:var(--accent,#1a73e8);min-width:84px;font-weight:600}
+    .opts .sep{color:var(--dim,#9498a0)}
+    .list{flex:1 1 auto;overflow:auto;padding:6px 8px 8px}
+    .ln{display:flex;align-items:center;gap:6px;padding:2px 0}
+    .ln.sub{opacity:.62;padding-left:22px}
+    .ln.edited input.tx{border-color:var(--warn,#d9a441)}
+    .ln.edited .ts{color:var(--warn,#d9a441)}
+    .ln .ts{flex:0 0 auto;color:var(--warn,#d9a441);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .ln .ts i{font-style:normal;opacity:.65}
+    .ln input.tx{flex:1 1 auto;min-width:0;background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      color:var(--fg,#d6dae0);border-radius:5px;padding:4px 7px;font:inherit;font-size:12.5px;cursor:text}
+    .ln input.tx:focus{outline:none;border-color:var(--accent,#1a73e8)}
+    .mini{flex:0 0 auto;border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);
+      border-radius:5px;padding:3px 8px;font:inherit;font-size:11.5px;cursor:pointer}
+    .mini:hover{border-color:var(--accent,#1a73e8)}
+    .mini.exp.on{background:rgba(26,115,232,.2);border-color:var(--accent,#1a73e8);color:var(--accent,#1a73e8)}
+    .confirm{flex:0 0 auto;border-top:1px solid var(--line,#3f434a);background:var(--panel,#2f333a)}
+    .confirm summary{padding:5px 10px;cursor:pointer;font-size:12px;color:var(--fg,#d6dae0)}
+    .confirm textarea{display:block;width:100%;box-sizing:border-box;height:132px;resize:vertical;border:0;
+      border-top:1px solid var(--line,#3f434a);background:var(--inset,#242830);color:var(--fg,#d6dae0);
+      font:12px/1.55 Consolas,"Microsoft YaHei",monospace;padding:6px 10px}
+    .confirm textarea:focus{outline:none}
+    .btns{flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;border-top:1px solid var(--line,#3f434a)}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:5px 12px;font:inherit;font-size:12px;cursor:pointer}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .btns input{flex:1 1 auto;min-width:0;background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      color:var(--fg,#d6dae0);border-radius:5px;padding:4px 7px;font:inherit;font-size:12px}
+    .msg{font-size:11.5px;color:var(--dim,#9498a0)}
+    .empty{padding:20px 10px;color:var(--dim,#9498a0);font-size:12px}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>LRC 导出</h1>
+    <span class="sp"></span>
+    <span class="msg" id="stat"></span>
+    <span class="dot" id="dot"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="stats">
+    <span>行数 <b id="nLines">0</b></span>
+    <span>字数 <b id="nChars">0</b></span>
+    <span id="srcInfo"></span>
+    <span class="clip" id="clipName"></span>
+  </div>
+
+  <!-- 选项：**显式分两行**（别靠自由换行 —— 一加滑块就变成三行、把列表挤掉一截）：
+       ① 偏移（原脚本的三个框）② 忽略短间隙（与「连接音符」同一张档位表）+ CJK 之间不加空格 -->
+  <div class="opts">
+    <div class="optrow">
+      <span class="sep">偏移</span>
+      <label><input type="number" id="offMin" step="1" value="0" autocomplete="off" style="width:62px"> 分</label>
+      <label><input type="number" id="offSec" step="1" value="0" autocomplete="off" style="width:62px"> 秒</label>
+      <label><input type="number" id="offMs" step="1" value="0" autocomplete="off" style="width:62px"> 毫秒</label>
+    </div>
+    <div class="optrow">
+      <label class="tier" title="十六分音符（0.25 拍）与 ACE 自带一致">
+        忽略短间隙
+        <input type="range" id="gap" min="0" max="8" step="1" value="0">
+        <b id="gapName">不忽略</b>
+      </label>
+      <label title="汉字之间不加空格，拼音/英文照旧留空格">
+        <input type="checkbox" id="cjkTight" checked> CJK 之间不加空格
+      </label>
+    </div>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <!-- 「确认」面板：**最终 LRC 原文**，可以直接在这里改文本（改完从文本重建行表）。
+       用户 2026-10-05：「加一个确认面板，可以直接编辑文本避免歌词错了二次编辑」。 -->
+  <details class="confirm" id="confirmBox">
+    <summary>确认：最终 LRC <span class="msg" id="confirmSum"></span></summary>
+    <textarea id="finalText" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="[00:12.32]歌词…（每行一条，可直接改）"></textarea>
+  </details>
+
+  <div class="btns">
+    <button class="btn" id="copy" type="button">复制 LRC</button>
+    <button class="btn" id="save" type="button">写成 .lrc 文件</button>
+    <input type="text" id="path" autocomplete="off" spellcheck="false" placeholder="C:\Users\你\Documents\歌.lrc">
+  </div>
+
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var LS = 'acetool.lrc';
+    var $ = function (id) { return document.getElementById(id); };
+    var S = { rows: [], gapTicks: 0, cjkTight: true, suggest: '', busy: false };
+
+    /* 阈值档位：**与主页「连接音符」同一张表**（音符时值，tick，480 = 1 拍）。
+       两边只有第 0 档的名字不同（这边「不忽略」/ 那边「不设限」，因为语义相反），其余逐字相同。
+       ⚠️ 改这张表要两边一起改 —— `devtools/check-ui.js` 有对表断言。 */
+    var TIERS = [
+      { t: 0, name: '不忽略' },
+      { t: 1920, name: '全音符' },
+      { t: 960, name: '二分音符' },
+      { t: 480, name: '四分音符' },
+      { t: 240, name: '八分音符' },
+      { t: 120, name: '十六分音符' },
+      { t: 60, name: '三十二分音符' },
+      { t: 30, name: '六十四分音符' },
+      { t: 15, name: '一百二十八分音符' },
+    ];
+    function gapTicksNow() { return TIERS[parseInt($('gap').value, 10) || 0].t; }
+    /** 发给 Go 侧的是**拍**（⚠️ 单位口径 2026-10-14：对外一律「拍」；表内部仍是 tick）。 */
+    function gapBeatsNow() { return gapTicksNow() / 480; }
+
+    /* 时间戳：**与 Go 侧 `formatLRCTime` 同一条规则**（截断不是四舍五入、支持负数）。
+       ⚠️ 两边算得不一样的话，"看到的行"和"复制/保存出去的那份"就是两份东西。
+       `devtools/check-ui.js` 用同一组向量在 Node 里跑这个函数，跟 Go 的测试对表。 */
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function fmt(sec, off) {
+      var t = sec + (off || 0), sign = '';
+      if (t < 0) { t = -t; sign = '-'; }
+      var min = Math.floor(t / 60), s = Math.floor(t) % 60, cs = Math.floor(t * 100) % 100;
+      return '[' + sign + pad2(min) + ':' + pad2(s) + '.' + pad2(cs) + ']';
+    }
+    function offsetSec() {
+      return (parseFloat($('offMin').value) || 0) * 60 + (parseFloat($('offSec').value) || 0)
+        + (parseFloat($('offMs').value) || 0) / 1000;
+    }
+    /** 行 → 成品 LRC 文本（复制与保存都用它，保证"看到的就是写出去的"） */
+    function renderLRC() {
+      var off = offsetSec(), out = [];
+      for (var i = 0; i < S.rows.length; i++) {
+        var r = S.rows[i], line = '';
+        for (var k = 0; k < r.times.length; k++) line += fmt(r.times[k], off);
+        out.push(line + r.text);
+      }
+      return out.join('\n') + '\n';
+    }
+    function isCJKRune(ch) { return /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/.test(ch); }
+    function isCJKToken(s) { return s.indexOf(' ') < 0 && /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/.test(s); }
+
+    async function api(toolId, values) {
+      var r = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      return r.json();
+    }
+    function firstJSON(d) { return d && d.calls && d.calls[0] && d.calls[0].json; }
+
+    /* ---- 读 ---- */
+    async function refresh() {
+      if (S.busy) return;
+      S.busy = true;
+      $('dot').className = 'dot';
+      $('stat').textContent = '读取中…';
+      var d;
+      try {
+        d = await api('lyric.lrc', {
+          offsetMin: $('offMin').value || '0',
+          offsetSec: $('offSec').value || '0',
+          offsetMs: $('offMs').value || '0',
+          gapBeats: String(gapBeatsNow()),
+          cjkTight: $('cjkTight').checked ? '1' : '0',
+        });
+      } catch (e) {
+        $('stat').textContent = '读不到：' + e.message;
+        S.busy = false;
+        return;
+      }
+      S.busy = false;
+      var j = firstJSON(d);
+      if (!d.ok || !j) {
+        $('dot').className = 'dot';
+        $('stat').textContent = '读不到（' + ((d && d.hint) || '看完整面板的命令日志') + '）';
+        $('list').innerHTML = '<div class="empty">' + esc((d && d.hint) || '') + '</div>';
+        return;
+      }
+      S.rows = j.rows || [];
+      S.suggest = j.suggestPath || '';
+      if (!$('path').value) $('path').value = S.suggest;
+      $('clipName').textContent = j.clipName ? j.clipName.trim() : '';
+      $('srcInfo').textContent = '原始 ' + j.rawLines + ' 行 → 合并 ' + j.mergedRows + ' 行'
+        + (j.skipped ? '（跳过空行 ' + j.skipped + '）' : '');
+      $('dot').className = 'dot on';
+      $('stat').textContent = j.lineCount + ' 行'
+        + (j.mergedRows ? '（其中 ' + j.mergedRows + ' 行是多时间戳的重复段）' : '');
+      render();
+    }
+
+    function render() {
+      if (!S.rows.length) {
+        $('list').innerHTML = '<div class="empty">这个片段里没有可导出的歌词</div>';
+        recount();
+        syncFinal();
+        return;
+      }
+      var off = offsetSec();
+      var h = '';
+      S.rows.forEach(function (r, i) {
+        var stamps = r.times.map(function (t) { return fmt(t, off); });
+        var many = r.times.length > 1;
+        var open = many && r.open;
+        // 一行（或展开后的第一条）：时间戳 + 文本框 + 分割/合并↓
+        // ⭐ 「折叠歌词有点抽象」⇒ 多时间戳的行给一个**展开**开关（用户 2026-10-05）
+        h += '<div class="ln' + (r.edited ? ' edited' : '') + '" data-i="' + i + '">'
+          + '<span class="ts" title="' + esc(r.times.length + ' 个时间戳') + '">'
+          + esc(open ? stamps[0] : stamps.join('')) + '</span>'
+          + (many ? '<button class="mini exp' + (open ? ' on' : '') + '" type="button" title="'
+              + (open ? '收起' : '展开成 ' + r.times.length + ' 行（同一句的重复段）') + '">'
+              + (open ? '收起' : '展开 ' + r.times.length) + '</button>' : '')
+          + '<input class="tx" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(r.text) + '"'
+          + ' title="' + esc(tipOf(r)) + '">'
+          + '<button class="mini split" type="button">分割</button>'
+          + '<button class="mini merge" type="button"' + (i === S.rows.length - 1 ? ' disabled' : '') + '>合并↓</button>'
+          + '</div>';
+        // 展开出来的其余时间戳（**只读展示**，不重复给按钮）
+        if (open) {
+          for (var k = 1; k < stamps.length; k++) {
+            h += '<div class="ln sub" data-i="' + i + '">'
+              + '<span class="ts">' + esc(stamps[k]) + '</span>'
+              + '<input class="tx" type="text" readonly autocomplete="off" value="' + esc(r.text) + '">'
+              + '</div>';
+          }
+        }
+      });
+      $('list').innerHTML = h;
+
+      document.querySelectorAll('.ln:not(.sub)').forEach(function (ln) {
+        var i = parseInt(ln.getAttribute('data-i'), 10);
+        var box = ln.querySelector('input.tx');
+        // ⭐ 文本**可以直接改**（用户 2026-10-05：「加一个确认面板，可以直接编辑文本
+        // 避免歌词错了二次编辑」）—— 改完回车/失焦就生效，复制与落盘都用改后的文本。
+        if (!box.readOnly) {
+          box.addEventListener('change', function () { commitText(i, box); });
+          box.addEventListener('keydown', function (e) { if (e.key === 'Enter') box.blur(); });
+        }
+        var ex = ln.querySelector('.mini.exp');
+        if (ex) ex.addEventListener('click', function () {
+          S.rows[i].open = !S.rows[i].open;
+          render();
+        });
+        ln.querySelector('.mini.split').addEventListener('click', function () { splitRow(i, box); });
+        ln.querySelector('.mini.merge').addEventListener('click', function () { mergeDown(i); });
+      });
+      recount();
+      syncFinal();
+    }
+
+    function tipOf(r) {
+      // ⚠️ 用户 2026-10-06：「所有的文字描述再精简」⇒ 一行说清，机制在 HANDOVER。
+      var t = (r.noteCount || 0) + ' 个音符 · ' + r.times.length + ' 个时间戳';
+      if (r.edited) t += ' · 改过文本（不能再分割）';
+      t += '\n光标放到要断的地方点「分割」：断在音符间隙上';
+      return t;
+    }
+
+    /* ---- 直接改文本（用户口径：避免歌词错了还要回 ACE 改一遍再导出）---- */
+    function commitText(i, box) {
+      var r = S.rows[i], v = box.value;
+      if (v === r.text) return;
+      r.text = v;
+      // ⚠️ 逐字符数组（`charSec`/`charNote`）是按**原来的字**算的，改过之后就对不上了 ⇒
+      // 标记成"改过"，分割会**如实拒绝**（不拿错位的时间去造一个新行）。
+      r.edited = true;
+      $('stat').textContent = '第 ' + (i + 1) + ' 行文本已改（共 ' + S.rows.filter(function (x) { return x.edited; }).length
+        + ' 行改过）—— 复制/落盘用的就是改后的';
+      render();
+    }
+
+    /* ---- 「确认」面板：最终 LRC 原文，**也能直接改**（改了就从文本重建行表）---- */
+    function syncFinal() {
+      if (document.activeElement === $('finalText')) return;   // 正在里面打字就别抢
+      $('finalText').value = S.rows.length ? renderLRC() : '';
+      var ed = S.rows.filter(function (x) { return x.edited; }).length;
+      $('confirmSum').textContent = S.rows.length + ' 行' + (ed ? ' · ' + ed + ' 行手动改过' : '');
+    }
+    /** 把「最终 LRC」文本重新解析成行表（时间戳 + 文字）。改过文本的行**不能再分割**。 */
+    function parseFinalIntoRows(text) {
+      var lines = text.split('\n').filter(function (l) { return l.trim() !== ''; });
+      var rows = [];
+      lines.forEach(function (l) {
+        var m = l.replace(/\r$/, '').match(/^((?:\[[^\]]*\])+)([\s\S]*)$/);
+        if (!m) { rows.push({ index: rows.length, tick: 0, sec: 0, times: [], text: l, charSec: [], charNote: [], noteCount: 0, edited: true }); return; }
+        var times = [];
+        var re = /\[([^\]]*)\]/g, x;
+        while ((x = re.exec(m[1])) !== null) {
+          var p = x[1].match(/^(-?)(\d+):(\d+)\.(\d+)$/);
+          if (p) {
+            var v = Number(p[2]) * 60 + Number(p[3]) + Number(p[4]) / 100;
+            times.push(p[1] === '-' ? -v : v);
+          }
+        }
+        // 面板里的秒是**原始秒**（不含偏移）；这里把偏移减回去，免得来回加两次
+        var off = offsetSec();
+        times = times.map(function (t) { return t - off; });
+        rows.push({ index: rows.length, tick: 0, sec: times.length ? times[0] : 0, times: times,
+          text: m[2], charSec: [], charNote: [], noteCount: 0, edited: true });
+      });
+      return rows;
+    }
+
+    /** 行数 / 字数：跟着当前的行实时算（分割/合并之后会变） */
+    function recount() {
+      var chars = 0;
+      for (var i = 0; i < S.rows.length; i++) {
+        var t = S.rows[i].text;
+        for (var k = 0; k < t.length; k++) if (t[k] !== ' ') chars++;
+      }
+      $('nLines').textContent = String(S.rows.length);
+      $('nChars').textContent = String(chars);
+    }
+
+    /* ---- 分割：断点落在**音符之间的间隙**上（用户 2026-10-05 口径）----
+     * 「分割点 = 光标位置**之前**和**之后**的那两个音符之间的间隙」
+     * ⇒ 光标落在某个音符内部时，断点推到**这个音符之后、下一个音符之前**；
+     *   光标正好在间隙上时，就断在那儿。
+     * 为什么要这样：一个多音符词（`hello#1 hello#2`）显示成一个 `hello`，
+     * 从字中间断会得到 `he` / `llo` —— 两个都不是音符，写回/试听都不成立。
+     * 数据：服务端给 `charNote`（逐字符属于第几个词）与 `charSec`（那个词的起始秒）。 */
+    function splitRow(i, box) {
+      var r = S.rows[i];
+      var k = box.selectionStart;
+      if (k === null || k === undefined || k <= 0) {
+        $('stat').textContent = '先把光标放到要断开的位置（不能在行首）';
+        return;
+      }
+      var cn = r.charNote, cs = r.charSec;
+      // ⚠️ **改过文本的行不能分割**：`charSec`/`charNote` 是按**原来的字**算的，改过就对不上了。
+      // 只比长度是不够的（"sui zhe" 改成 "GAI GUO" 长度还是一样 ⇒ 长度检查会放它过去）——
+      // 所以这里直接用那个**显式的标记**，宁可拒绝也不拿错位的时间造新行。
+      if (r.edited) {
+        $('stat').textContent = '第 ' + (i + 1) + ' 行你手动改过文本，逐字符时间已经对不上 —— 不能分割（刷新可复原）';
+        return;
+      }
+      if (!cn || cn.length !== r.text.length || !cs || cs.length !== r.text.length) {
+        $('stat').textContent = '这一行缺逐字符信息，分割不了（刷新一下）';
+        return;
+      }
+      // 光标**前一个字符**属于哪个词 —— 断点要落在这个词之后
+      var before = cn[k - 1];
+      var cut = k;
+      while (cut < r.text.length && cn[cut] <= before) cut++;   // 跳过还属于这个词（或更早的词）的字符
+      if (cut >= r.text.length) {
+        $('stat').textContent = '光标在**最后一个音符**里 —— 它后面没有音符可以断开了';
+        return;
+      }
+      var leftRaw = r.text.slice(0, cut), rightRaw = r.text.slice(cut);
+      // 断点处的分隔空格：归前一行尾部/后一行头部都不合适 ⇒ 去掉（并把逐字符数组一起裁齐）
+      var left = leftRaw.replace(/\s+$/, '');
+      var right = rightRaw.replace(/^\s+/, '');
+      var idx = cut + (rightRaw.length - right.length);
+      if (!left || !right) { $('stat').textContent = '不能这样断（一边会变成空的）'; return; }
+      var t = cs[idx];
+      S.rows.splice(i, 1,
+        { index: r.index, times: r.times.slice(), sec: r.sec, tick: r.tick, text: left,
+          charSec: cs.slice(0, left.length), charNote: cn.slice(0, left.length), noteCount: r.noteCount },
+        { index: r.index, times: [t], sec: t, tick: r.tick, text: right,
+          charSec: cs.slice(idx), charNote: cn.slice(idx), noteCount: r.noteCount });
+      // ⚠️ 状态句**不报"第几个音符"**：`charNote` 是"第几个词号"（一个多音符词算一个），
+      // 拿它当音符序号在 `hello#1 hello#2` 这种行上会数错。用文字说断在哪里，永远是真的。
+      $('stat').textContent = '已断开：前一行到「' + left + '」为止，新行时间戳 = ' + fmt(t, offsetSec());
+      render();
+    }
+
+    /* ---- 合并：与下一行合成一行，**只留一个时间戳**（用户口径：留前面那个） ---- */
+    function mergeDown(i) {
+      if (i >= S.rows.length - 1) return;
+      var a = S.rows[i], b = S.rows[i + 1];
+      // 接缝：两边都是 CJK ⇒ 直接粘；否则补一个空格
+      var prev = a.text.slice(-1), next = b.text.slice(0, 1);
+      var sep = (isCJKRune(prev) && isCJKRune(next)) ? '' : ' ';
+      var text = a.text + sep + b.text;
+      var charSec = (a.charSec || []).slice();
+      if (sep) charSec.push(a.charSec && a.charSec.length ? a.charSec[a.charSec.length - 1] : (a.times[0] || 0));
+      charSec = charSec.concat(b.charSec || []);
+      // ⚠️ 词号要**给后一行整体加一个偏移**：两行的词号都是从 0 起编的，
+      // 直接接起来会让"最后一行"和"新一行的开头"看起来属于同一个词（分割就会断错地方）。
+      var an = a.charNote || [], bn = b.charNote || [];
+      var maxA = an.length ? Math.max.apply(null, an) : -1;
+      var charNote = an.slice();
+      if (sep) charNote.push(an.length ? an[an.length - 1] : 0);
+      charNote = charNote.concat(bn.map(function (x) { return x + maxA + 1; }));
+      S.rows.splice(i, 2, {
+        index: a.index, times: [a.times[0]], sec: a.sec, tick: a.tick,
+        text: text, charSec: charSec, charNote: charNote,
+        noteCount: (a.noteCount || 0) + (b.noteCount || 0),
+      });
+      $('stat').textContent = '已合并第 ' + (i + 1) + '、' + (i + 2) + ' 行（只留前一个时间戳）';
+      render();
+    }
+
+    async function copyLRC() {
+      var txt = renderLRC();
+      try {
+        await navigator.clipboard.writeText(txt);
+        $('stat').textContent = '已复制 ' + S.rows.length + ' 行到剪贴板';
+      } catch (e) {
+        $('stat').textContent = '剪贴板写不进去（' + e.message + '）';
+      }
+    }
+
+    async function saveLRC() {
+      var path = $('path').value.trim();
+      if (!path) { $('stat').textContent = '先填一个路径（要 .lrc 结尾）'; return; }
+      if (!/\.lrc$/i.test(path)) { $('stat').textContent = '路径要以 .lrc 结尾'; return; }
+      $('save').disabled = true;
+      var d = await api('lyric.lrcFile', { path: path, text: renderLRC() });
+      $('save').disabled = false;
+      var j = firstJSON(d);
+      if (d.ok && j) {
+        $('stat').textContent = '已写入 ' + j.path + '（' + j.bytes + ' 字节 · ' + j.lines + ' 行'
+          + (j.overwrote ? ' · 覆盖了同名文件' : '') + '）';
+      } else {
+        $('stat').textContent = '写入失败：' + ((d && d.hint) || (j && j.path) || '看完整面板的命令日志');
+      }
+    }
+
+    function esc(s) {
+      return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function $stat(msg) { $('stat').textContent = msg; }
+
+    /* ---- 绑定 ---- */
+    try {
+      var sv = JSON.parse(localStorage.getItem(LS) || '{}');
+      if (typeof sv.gapTier === 'number' && sv.gapTier >= 0 && sv.gapTier < TIERS.length) {
+        $('gap').value = String(sv.gapTier);
+        $('gapName').textContent = TIERS[sv.gapTier].name;
+      }
+      if (typeof sv.cjkTight === 'boolean') $('cjkTight').checked = sv.cjkTight;
+      if (sv.path) $('path').value = sv.path;
+    } catch (e) { }
+    function savePrefs() {
+      try {
+        localStorage.setItem(LS, JSON.stringify({
+          gapTier: parseInt($('gap').value, 10) || 0,
+          cjkTight: $('cjkTight').checked, path: $('path').value,
+        }));
+      } catch (e) { }
+    }
+
+    $('refresh').addEventListener('click', function () { savePrefs(); refresh(); });
+    // 偏移一改就**就地重渲染**（不用重新读 ACE —— 时间戳是原始秒，偏移只在打印时加）
+    ['offMin', 'offSec', 'offMs'].forEach(function (id) {
+      $(id).addEventListener('input', function () { savePrefs(); render(); });
+    });
+    $('cjkTight').addEventListener('change', function () { savePrefs(); refresh(); });
+    // 滑块拖动时**只更新名字**（不重读 ACE）；松手（change）才真去重新切行
+    $('gap').addEventListener('input', function () {
+      $('gapName').textContent = TIERS[parseInt($('gap').value, 10) || 0].name;
+    });
+    $('gap').addEventListener('change', function () { savePrefs(); refresh(); });
+    $('path').addEventListener('change', savePrefs);
+    // 「确认」面板里的文本改了 ⇒ 从文本**重建行表**（时间戳/文字都由它来，逐字符时间清空 ⇒ 那些行不能再分割）
+    $('finalText').addEventListener('change', function () {
+      var rows = parseFinalIntoRows($('finalText').value);
+      if (!rows.length) { $('stat').textContent = '确认面板里没有内容（至少要一行 [时间戳]文字）'; return; }
+      S.rows = rows;
+      $('stat').textContent = '已按确认面板里的文本重建 ' + rows.length + ' 行（这些行的逐字符时间已清空，不能再分割）';
+      render();
+    });
+    $('copy').addEventListener('click', copyLRC);
+    $('save').addEventListener('click', saveLRC);
+    refresh();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

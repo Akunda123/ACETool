@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>ACETool 侧栏</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    /* 窄栏页：给"贴 ACE 边上的那个独立窗口"用（用户 2026-10-16：「这么细其实就够用了」）。
+       ⚠️ 浏览器窗口最窄 178 物理像素（≈119 逻辑，实测）—— 所以这里按 **120 逻辑像素**设计：
+       一行一个工具，19 行按窗口高度**自适应**，鼠标压到某行就把**全称**显示出来。
+       ⚠️ 网页画不到自己的窗口外面 ⇒ 全名只能在行内显示（原生细条那种"栏外弹小窗"做不到）。 */
+    :root {
+      /* ⚠️ 与 `style.css` 的 `:root` **同一套色板**（用户 2026-10-17：「颜色按照web统一」）——
+         别在这一页另立法（原来是自己一套 #23262b / #39404b，跟主面板对不上）。 */
+      --bg: #282c33; --row: #2f333a; --rowhover: #393d44; --line: #3f434a;
+      --fg: #d6dae0; --dim: #9498a0; --ok: #5ebd7a; --warn: #d9a441; --blue: #1a73e8;
+      /* 红 = **改工程文件**那一组（与 home 的 `.fbtn.file`、原生细条的 `colorFile` 同一个色） */
+      --bad: #e06c75;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg); color: var(--fg); display: flex; flex-direction: column;
+      font: 12px/1.25 "Microsoft YaHei", system-ui, sans-serif; overflow: hidden;
+      user-select: none; -webkit-user-select: none;
+    }
+    #list { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; padding: 4px 0; }
+    .it {
+      flex: 1 1 0; min-height: 0; position: relative; display: flex; align-items: center;
+      gap: 4px; padding: 0 5px 0 8px; border-bottom: 1px solid rgba(0, 0, 0, .25);
+      cursor: pointer; overflow: hidden;
+    }
+    .it:last-child { border-bottom: 0; }
+    .it:hover { background: var(--rowhover); }
+    /* 左起那条**颜色码**（与 home 的按钮、原生细条**同一套**语义）：
+       绿=侧栏里就地完成 / 琥珀=要参数且塞不下 / 蓝=开窗口 / 红=**改工程文件** */
+    .it::before {
+      content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px;
+      background: var(--blue); border-radius: 0 2px 2px 0;
+    }
+    .it.run::before { background: var(--ok); }
+    .it.params::before { background: var(--warn); }
+    .it.file::before { background: var(--bad); }
+    .short { flex: 0 0 auto; font-weight: 600; letter-spacing: .5px; }
+    .full {
+      flex: 1 1 auto; color: var(--dim); font-size: 11px; display: none;
+      overflow-wrap: anywhere; line-height: 1.15;
+    }
+    /* 悬停：把**全称**露出来（就这么宽，只能行内显示；放不下就换行/省略） */
+    .it:hover .full { display: block; }
+    .it.busy { opacity: .55; }
+    #tip {
+      flex: 0 0 auto; padding: 4px 6px; font-size: 11px; color: var(--dim);
+      border-top: 1px solid var(--line); display: none; overflow-wrap: anywhere;
+    }
+    #tip.bad { color: #f08a8a; }
+  </style>
+</head>
+
+<body>
+  <div id="list"></div>
+  <div id="tip"></div>
+
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+
+    function $(id) { return document.getElementById(id); }
+
+    /** 一句话反馈：窄栏里没有别的地方能说话。 */
+    var tipTimer = null;
+    function tip(text, bad) {
+      var t = $('tip');
+      t.textContent = text;
+      t.className = bad ? 'bad' : '';
+      t.style.display = 'block';
+      clearTimeout(tipTimer);
+      tipTimer = setTimeout(function () { t.style.display = 'none'; }, 6000);
+    }
+
+    async function runTool(tool, values) {
+      var r = await fetch('/api/run', {
+        method: 'POST', headers: H,
+        body: JSON.stringify({ toolId: tool, values: values || {} }),
+      });
+      return await r.json();
+    }
+
+    async function openWindow(page) {
+      var r = await fetch('/api/app-window', {
+        method: 'POST', headers: H, body: JSON.stringify({ page: page }),
+      });
+      return await r.json();
+    }
+
+    /** 从工具回包里取读出来的文本（读工具的结果形状：`calls[0].json.text`）。 */
+    function firstText(d) {
+      var calls = (d && d.calls) || [];
+      for (var i = 0; i < calls.length; i++) {
+        if (calls[i] && calls[i].json && calls[i].json.text) return calls[i].json.text;
+      }
+      return '';
+    }
+
+    function ranTip(full, d) {
+      if (!d || !d.ok) { tip(full + '：失败 —— ' + ((d && (d.hint || d.error)) || '看面板命令日志'), true); return; }
+      var n = (d.calls || []).length;
+      var undo = d.undo && d.undo.created ? (' · 可撤回 ' + d.undo.created + ' 条') : '';
+      tip(full + '：已跑（' + n + ' 条命令）' + undo);
+    }
+
+    function act(it, el) {
+      el.classList.add('busy');
+      (async function () {
+        try {
+          if (it.Kind === 'page' || it.Kind === 'file') {
+            // 'file'（改工程文件那一组）也是开页面 —— 页面里是"保存工程→改→自动重开"那条流程
+            var d = await openWindow(it.Page);
+            tip(d.ok ? (it.Full + '：已开窗口' + (d.hint ? ' · ' + d.hint : '')) : (it.Full + '：开窗口失败 —— ' + (d.error || '?')), !d.ok);
+          } else if (it.Kind === 'params' || it.Panel) {
+            // `params` 或"带附属参数条"的项（连接音符的档位 / 音素的两个框）：
+            // ⚠️ **参数条是 exe 的原生窗口**，网页这一侧调不出来 ⇒ 老实开主面板去填
+            //（主面板 home 里就有同款的阈值滑块与两个输入框，值各记各的）。
+            var d2 = await openWindow('home.html');
+            tip(d2.ok ? (it.Full + '：要在主面板里填参数') : (it.Full + '：开主面板失败 —— ' + (d2.error || '?')), !d2.ok);
+          } else if (it.Act === 'clipCopy') {
+            // 复制歌词：跑只读工具拿文本，再用**浏览器剪贴板**写进去
+            //（细条是原生窗口、没有网页，那一路是 exe 自己写剪贴板 —— 两条路的文本来源同一个工具）
+            var d3 = await runTool(it.Tool, it.Values);
+            if (!d3 || !d3.ok) { tip(it.Full + '：失败 —— ' + ((d3 && (d3.hint || d3.error)) || '看面板命令日志'), true); return; }
+            var txt = firstText(d3);
+            if (!txt) { tip(it.Full + '：没取到歌词（选中的音符是空的？没选中时按整个片段找）', true); return; }
+            await navigator.clipboard.writeText(txt);
+            var cnt = txt.replace(/\s+/g, '').length;
+            tip(it.Full + '：已复制 ' + cnt + ' 个字到剪贴板');
+          } else if (it.Act === 'clipPaste') {
+            // 粘贴歌词：先读**浏览器剪贴板**，再把文本当参数跑工具
+            var txt2 = await navigator.clipboard.readText();
+            if (!txt2 || !txt2.replace(/\s+/g, '').length) { tip(it.Full + '：剪贴板里没有文字（先复制一段歌词或文本）', true); return; }
+            var vals = Object.assign({}, it.Values || {});
+            vals.text = txt2;
+            ranTip(it.Full, await runTool(it.Tool, vals));
+          } else {
+            ranTip(it.Full, await runTool(it.Tool, it.Values));
+          }
+        } catch (e) {
+          tip(it.Full + '：请求失败 —— ' + ((e && e.message) || e), true);
+        } finally {
+          el.classList.remove('busy');
+        }
+      })();
+    }
+
+    (async function () {
+      var d;
+      try {
+        d = await (await fetch('/api/rail/items', { cache: 'no-store' })).json();
+      } catch (e) {
+        tip('读清单失败：' + ((e && e.message) || e), true);
+        return;
+      }
+      var items = d.items || [];
+      if (!items.length) { tip('清单是空的（`/api/rail/items` 没给东西）', true); return; }
+      var list = $('list');
+      items.forEach(function (it) {
+        var el = document.createElement('div');
+        el.className = 'it ' + it.Kind;
+        el.title = it.Full; // 窄栏放不下时的兜底（系统原生 tooltip）
+        var s = document.createElement('span');
+        s.className = 'short';
+        s.textContent = it.Short;
+        var f = document.createElement('span');
+        f.className = 'full';
+        f.textContent = it.Full;
+        el.appendChild(s);
+        el.appendChild(f);
+        el.addEventListener('click', function () { act(it, el); });
+        list.appendChild(el);
+      });
+      // 自检抓手：能问出"这一页真的把 19 项画出来了吗"
+      window.RailPage = { count: items.length };
+    })();
+  </script>
+</body>
+
+</html>

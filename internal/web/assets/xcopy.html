@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>跨轨复制</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:var(--ok,#5ebd7a)}
+    .msg{font-size:11.5px;color:var(--dim,#9498a0)}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:8px 10px 12px}
+    .row{display:flex;align-items:center;gap:8px;margin:6px 0;min-width:0;flex-wrap:wrap}
+    .row > .lb{flex:0 0 auto;color:var(--dim,#9498a0);font-size:12px;min-width:38px}
+    select,input[type=number]{background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      color:var(--fg,#d6dae0);border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;min-width:0}
+    select{flex:1 1 120px}
+    input[type=number]{width:62px;font-variant-numeric:tabular-nums}
+    select:focus,input:focus{outline:none;border-color:var(--accent,#1a73e8)}
+    input:disabled{opacity:.45}
+    label.ck{display:flex;align-items:center;gap:5px;color:var(--fg,#d6dae0);font-size:12px;cursor:pointer}
+    label.ck input{accent-color:var(--accent,#1a73e8)}
+    #mmwrap{position:relative;flex:0 0 auto;border:1px solid var(--line,#3f434a);border-radius:6px;overflow:hidden;
+      background:var(--inset,#242830);margin:6px 0}
+    #mm{display:block;width:100%;height:150px;touch-action:none;cursor:crosshair}
+    #mmRange{position:absolute;top:0;bottom:0;left:0;right:0;pointer-events:none}
+    #mmRange i{position:absolute;top:0;bottom:0;background:rgba(26,115,232,.34);border-left:1.5px solid #1a73e8;border-right:1.5px solid #1a73e8}
+    .legend{display:flex;gap:14px;align-items:center;font-size:11.5px;color:var(--dim,#9498a0);flex-wrap:wrap}
+    .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+    #rep{white-space:pre-wrap;word-break:break-word;background:var(--inset,#242830);border:1px solid var(--line,#3f434a);
+      border-radius:6px;padding:6px 8px;font-size:11.5px;color:var(--dim,#9498a0);max-height:34vh;overflow:auto}
+    #rep.ok{color:var(--ok,#5ebd7a)}
+    #rep.bad{color:var(--bad,#e06c75)}
+    /* ⭐ 参数表（用户 2026-10-07「参数展开…v1 就实参和包络两列」）：每行一个参数、每列一条曲线 */
+    .ptab{border-collapse:collapse;margin:6px 0 2px;font-size:12px}
+    .ptab th,.ptab td{border:1px solid var(--line,#3f434a);padding:2px 10px;text-align:center;color:var(--fg,#d6dae0)}
+    .ptab th{color:var(--dim,#9498a0);font-weight:500;background:var(--panel,#2f333a);font-size:11.5px}
+    .ptab th .dst{display:block;font-size:10.5px;color:var(--dim,#9498a0);font-weight:400}
+    .ptab td.pname,.ptab th.pname{text-align:left;font-variant-numeric:tabular-nums}
+    .ptab td.na{color:var(--dim,#9498a0)}
+    .ptab input{accent-color:var(--accent,#1a73e8)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>跨轨复制</h1>
+    <span class="dot" id="dot"></span>
+    <span class="msg" id="stat">读取中…</span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <!-- 源轨 → 目标轨（档位来自所有轨道的预览） -->
+    <div class="row">
+      <span class="lb">轨道</span>
+      <select id="src" autocomplete="off"></select>
+      <span class="msg">→</span>
+      <select id="dst" autocomplete="off"></select>
+    </div>
+
+    <!-- 范围：**可选** —— 不勾就是整对片段；勾了按工程小节限一段 -->
+    <div class="row">
+      <label class="ck" title="不勾 = 整对片段都算；勾了只搬落在这段工程小节里的音符">
+        <input type="checkbox" id="useRange" autocomplete="off"> 限定范围</label>
+      <input type="number" id="b1" min="1" step="1" value="1" autocomplete="off" disabled>
+      <span class="msg">–</span>
+      <input type="number" id="b2" min="1" step="1" value="4" autocomplete="off" disabled>
+      <span class="msg">小节</span>
+      <span class="sp"></span>
+      <span class="msg" title="两段音符起点常有几 tick 的量化差；起点差在这之内算同一个音">配对阈值</span>
+      <input type="number" id="tol" min="0" step="1" value="30" autocomplete="off" style="width:80px">
+      <span class="msg">tick</span>
+      <span class="sp"></span>
+      <span class="msg" id="rangeInfo"></span>
+    </div>
+
+    <div id="mmwrap"><canvas id="mm"></canvas></div>
+    <div class="row legend">
+      <span><i style="background:#5ebd7a"></i>源轨</span>
+      <span><i style="background:#d9a441"></i>目标轨</span>
+      <span><i style="background:#1a73e8"></i>范围（勾了「限定范围」才有）</span>
+      <span class="sp"></span>
+      <span>在图上拖 = 拉范围（自动勾上「限定范围」）</span>
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <span class="lb">复制</span>
+      <label class="ck"><input type="checkbox" id="lyrics" checked autocomplete="off"> 歌词</label>
+      <label class="ck"><input type="checkbox" id="pitch" checked autocomplete="off"> 音高</label>
+      <label class="ck" title="只搬手动改过的发音（默认发音不搬）；写音素会冻结成 override">
+        <input type="checkbox" id="phon" checked autocomplete="off"> 音素</label>
+      <label class="ck"><input type="checkbox" id="dur" autocomplete="off"> 时值</label>
+      <label class="ck" title="只搬手动改过的辅音时长（v1 看音符上的长度数组、v2 看 pin）">
+        <input type="checkbox" id="cons" autocomplete="off"> 辅音时长</label>
+    </div>
+    <div class="row">
+      <label class="ck" title="勾上就展开下面的参数表：**逐参数逐列**勾选（列按**目标轨**的花名册给）。跨引擎世代也能搬 —— 表上方选「按值域换算」即可">
+        <input type="checkbox" id="params" autocomplete="off"> 参数曲线</label>
+      <label class="ck"><input type="checkbox" id="dyn" autocomplete="off"> dynamic 锚点</label>
+    </div>
+    <!-- 参数表：行 = **目标轨**花名册里能逐 tick 写的参数；列 = `xcopy.view` 的 paramColumns -->
+    <div id="ptWrap" hidden>
+      <!-- ⚠️ 用户 2026-10-23：「不是两个勾……跨代必然换算」——
+           不再要「按值域换算 / 允许跨引擎世代」两个开关：**跨代一律按值域换算**（同代时是恒等）。 -->
+      <table class="ptab" id="ptab"></table>
+      <!-- ⭐ 2026-10-19 跨代约定③：v2 的 dynamic 摊到 v1 的 envelope 乘数层。
+           **只在跨世代时出现**（同一个世代里 dynamic 原样搬，不需要摊）。 -->
+      <div id="dynEnvWrap" hidden>
+        <div class="msg">dynamic → 包络（跨代专用）：v2 的 dynamic（−1…1，0 = 不动）摊到目标的
+          `envelope` 乘数层 —— `envelope = 1 + 系数 × dynamic`；留空的参数不动。</div>
+        <table class="ptab" id="dynEnvTab"></table>
+      </div>
+      <div class="msg" id="ptHint"></div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="prev" type="button">预览</button>
+      <button class="btn" id="run" type="button">执行</button>
+      <span class="msg">只改**已经存在**的音符（按绝对时间配对，不新建）；执行可被顶栏「撤回这一批」退回</span>
+    </div>
+    <div id="rep">还没跑。</div>
+  </div>
+
+  <script src="canvasmap.js"></script>
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    /** 拍 = tick / 480（⚠️ 单位口径 2026-10-14：对外一律「拍」，tick 只进内部计算）。 */
+    function beatOf(tick) {
+      if (typeof tick !== 'number') return tick;
+      return String(Math.round((tick / 480) * 100) / 100);
+    }
+    var LS = 'acetool.xcopy';
+
+    var S = { mm: null, cur: null, roster: null, drag: null, busy: false };
+
+    function load() {
+      try {
+        var j = JSON.parse(localStorage.getItem(LS) || '{}');
+        if (j.src !== undefined) S.saveSrc = j.src;
+        if (j.dst !== undefined) S.saveDst = j.dst;
+        if (j.useRange) { $('useRange').checked = true; }
+        if (j.b1) $('b1').value = j.b1;
+        if (j.b2) $('b2').value = j.b2;
+        if (j.tol !== undefined && j.tol !== null) $('tol').value = j.tol;
+      } catch (e) { }
+    }
+    function save() {
+      localStorage.setItem(LS, JSON.stringify({
+        src: $('src').value, dst: $('dst').value,
+        useRange: $('useRange').checked, b1: $('b1').value, b2: $('b2').value, tol: $('tol').value,
+      }));
+    }
+
+    async function call(toolId, values) {
+      var r = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      return r.json();
+    }
+
+    function ticksPerBar() { return (S.cur && S.cur.ticksPerBar) || 1920; }
+    function totalTick() {
+      var m = S.mm || {};
+      return Math.max(m.durationTick || 0, m.lastTick || 0, 1920);
+    }
+    function rangeTicks() {
+      if (!$('useRange').checked) return null;
+      var tpb = ticksPerBar();
+      var lo = (parseInt($('b1').value, 10) || 1) - 1, hi = parseInt($('b2').value, 10) || 1;
+      return { lo: lo * tpb, hi: hi * tpb };
+    }
+
+    var MMG = null;   // minimap.js 返回的几何（X/t0/scale/gutter）
+    var MM = null;
+        // 读不到数据时把画布画成一句话（否则它停在默认 300x150，看着像坏了）
+    function mmEmpty(msg) {
+      try {
+        var el = document.getElementById('mm');
+        if (!el || !window.CanvasMap || !CanvasMap.draw) return;
+        CanvasMap.draw(el, null, { emptyText: msg });
+      } catch (e) { }
+    }
+
+    function draw() {
+      var m = S.mm, el = $('mm');
+      if (!el) return;
+      if (!m || !window.CanvasMap) { var c = el.getContext('2d'); if (c) c.clearRect(0, 0, el.width, el.height); return; }
+      var si = parseInt($('src').value, 10), di = parseInt($('dst').value, 10);
+      var rt = rangeTicks();
+      MM = window.CanvasMap.draw(el, m, {
+        hi: [si, di], hiMap: { [si]: '94,189,122', [di]: '217,164,65' },
+        picks: (rt && rt.hi > rt.lo) ? [{ begin: rt.lo, end: rt.hi }] : [],
+      });
+    }
+
+    function drawRange() {
+      var box = $('mmRange');
+      if (!box) return;
+      box.innerHTML = '';
+      var rt = rangeTicks();
+      if (!rt || !MMG || rt.hi <= rt.lo) return;
+      var xa = MMG.X(rt.lo), xb = MMG.X(rt.hi);
+      var i = document.createElement('i');
+      i.style.left = Math.min(xa, xb) + 'px';
+      i.style.width = Math.max(1, Math.abs(xb - xa)) + 'px';
+      box.appendChild(i);
+    }
+    /** px → 小节号（按 minimap 的几何反算；没有几何就退回线性比例） */
+    function barAtPx(px) {
+      var g = MMG, tick;
+      if (g && g.scale) {
+        tick = (px - (g.gutter || 0)) / g.scale + (g.t0 || 0);
+      } else {
+        var w = $('mm').clientWidth || 580;
+        tick = Math.max(0, Math.min(totalTick(), px / Math.max(1, w) * totalTick()));
+      }
+      tick = Math.max(0, Math.min(totalTick(), tick));
+      return Math.max(1, Math.round(tick / ticksPerBar() + 1));
+    }
+    function mmDown(ev) {
+      var r = $('mm').getBoundingClientRect();
+      $('mm').setPointerCapture(ev.pointerId);
+      S.drag = barAtPx(ev.clientX - r.left);
+      $('useRange').checked = true;
+      $('b1').disabled = $('b2').disabled = false;
+      $('b1').value = S.drag; $('b2').value = S.drag;
+      render(); save();
+    }
+    function mmMove(ev) {
+      if (!S.drag) return;
+      var r = $('mm').getBoundingClientRect();
+      var bar = barAtPx(ev.clientX - r.left);
+      $('b1').value = Math.min(S.drag, bar);
+      $('b2').value = Math.max(S.drag, bar);
+      render(); save();
+    }
+    function mmUp() { S.drag = null; render(); }
+
+    /** ⭐ 参数表（用户 2026-10-07：「参数展开，列出所有参数，列个表格，勾选；**v1 就实参和包络两列**」）。
+     *
+     *  行/列都按**目标轨**（`S.roster` = `xcopy.view{trackIndex: 目标}`）现推：
+     *  行 = 有 dense 可写层的参数；列 = `paramColumns`（v1：实参→`direct`、包络→`envelope`；v2：实参→`user`）。
+     *  ⚠️ 花名册是**异步**取回来的，换目标轨时先同步清 `S.roster`（见 onTrackChange）——
+     *  否则"换轨后立刻点参数曲线"会用上一条轨的层画出错的表。 */
+    var PN = {};   // 参数名 → 上一轮勾选（重画不丢勾）
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+    function paramCols() { return ((S.roster || {}).paramColumns || []); }
+    function paramRows() {
+      var r = S.roster || {};
+      return (r.params || []).filter(function (p) {
+        return p.available && (p.writableLayers || []).length;
+      });
+    }
+    function renderParamTable() {
+      var wrap = $('ptWrap'), tb = $('ptab'), hint = $('ptHint');
+      if (!wrap) return;
+      wrap.hidden = !$('params').checked;
+      if (wrap.hidden) return;
+      var cols = paramCols(), rows = paramRows();
+      if (!cols.length || !rows.length) {
+        tb.innerHTML = '';
+        hint.textContent = S.roster
+          ? '目标轨这一份 clip 的花名册里没有能逐个采样点写的参数层 ⇒ 参数这一项没什么可选。'
+          : '还没取到目标轨的花名册（参数表要按**目标**的层给）。';
+        return;
+      }
+      tb.querySelectorAll('input[data-p]').forEach(function (i) {
+        (PN[i.getAttribute('data-p')] = PN[i.getAttribute('data-p')] || {})[i.getAttribute('data-c')] = i.checked;
+      });
+      var h = '<tr><th class="pname">参数（目标轨）</th>' + cols.map(function (c) {
+        return '<th title="' + esc(c.hint || '') + '">' + esc(c.label) +
+          '<span class="dst">→ ' + esc(c.dstLayer || '') + '</span></th>';
+      }).join('') + '</tr>';
+      rows.forEach(function (p) {
+        var t = (p.displayName || p.param) + '（' + p.param + ' · ' + (p.scale || '?') + '）' +
+          ' 值域 ' + p.valueMin + '…' + p.valueMax;
+        h += '<tr><td class="pname" title="' + esc(t) + '">' + esc(p.param) + '</td>';
+        cols.forEach(function (c) {
+          var ok = (p.writableLayers || []).indexOf(c.dstLayer) >= 0;
+          if (!ok) {
+            h += '<td class="na" title="目标这一代这个参数没有 ' + esc(c.dstLayer) + ' 层">—</td>';
+            return;
+          }
+          var kept = (PN[p.param] || {})[c.key];
+          // ⭐ 用户 2026-10-19：「v1 包络大于实参，**包络优先**」⇒ 默认勾**包络**；
+          // 这一代只有一列（v2 只有实参/user）时当然要勾上。
+          var on = (kept === undefined) ? (c.key === 'envelope' || cols.length === 1) : kept;
+          h += '<td><input type="checkbox" data-p="' + esc(p.param) + '" data-c="' + esc(c.key) +
+            '" autocomplete="off"' + (on ? ' checked' : '') + '></td>';
+        });
+        h += '</tr>';
+      });
+      tb.innerHTML = h;
+      tb.querySelectorAll('input[data-p]').forEach(function (i) { i.addEventListener('change', paramHint); });
+      paramHint();
+      renderDynEnvTable();
+    }
+
+    /** 这次是不是**跨世代**（源引擎 ≠ 目标引擎）——`dynamic → 包络` 那张表只在这时候出现。 */
+    function isCrossGen() {
+      var a = ((S.srcRoster || {}).engineGeneration || '');
+      var b = ((S.roster || {}).engineGeneration || '');
+      return !!a && !!b && a !== b;
+    }
+    /** 目标这一册里**能写 `envelope`** 的参数（摊 dynamic 的落点只能是乘数层）。 */
+    function envParams() {
+      return ((S.roster || {}).params || []).filter(function (p) {
+        return (p.writableLayers || []).indexOf('envelope') >= 0;
+      });
+    }
+    /** `dynamic → 包络` 的表格：一行一个目标参数、一格系数（留空 = 这个参数不摊）。 */
+    function renderDynEnvTable() {
+      var wrap = $('dynEnvWrap'), tb = $('dynEnvTab');
+      if (!wrap || !tb) return;
+      var show = !!$('params') && $('params').checked && isCrossGen() && envParams().length > 0;
+      wrap.hidden = !show;
+      if (!show) { tb.innerHTML = ''; return; }
+      var kept = {};
+      tb.querySelectorAll('input[data-de]').forEach(function (i) { kept[i.getAttribute('data-de')] = i.value; });
+      var h = '<tr><th class="pname">参数（目标可写 `envelope`）</th>' +
+        '<th>系数 k<span class="dst">envelope = 1 + k × dynamic</span></th></tr>';
+      envParams().forEach(function (p) {
+        var v = kept[p.param] === undefined ? '' : kept[p.param];
+        h += '<tr><td class="pname">' + esc(p.param) + '</td><td>' +
+          '<input type="number" step="0.1" data-de="' + esc(p.param) + '" value="' + esc(v) +
+          '" placeholder="0" style="width:96px" autocomplete="off"></td></tr>';
+      });
+      tb.innerHTML = h;
+    }
+    /** 表里填了系数的那些 → `falsetto=0.5, tension=-0.3`（留空的不发）。 */
+    function pickedDynEnv() {
+      var out = [];
+      ($('dynEnvTab') || { querySelectorAll: function () { return []; } }).querySelectorAll('input[data-de]').forEach(function (i) {
+        var v = String(i.value || '').trim();
+        if (v !== '' && !isNaN(Number(v))) out.push(i.getAttribute('data-de') + '=' + v);
+      });
+      return out.join(', ');
+    }
+    /** 勾出来的格子 → 发给工具的 `paramSel`（**改目标轨不影响勾选**：勾的是参数名与列名）。 */
+    function pickedParams() {
+      var out = {};
+      ($('ptab') || { querySelectorAll: function () { return []; } }).querySelectorAll('input[data-p]').forEach(function (i) {
+        if (!i.checked) return;
+        var p = i.getAttribute('data-p');
+        (out[p] = out[p] || []).push(i.getAttribute('data-c'));
+      });
+      return out;
+    }
+    function paramHint() {
+      var el = $('ptHint');
+      if (!el) return;
+      var pk = pickedParams(), n = 0, names = Object.keys(pk);
+      names.forEach(function (k) { n += pk[k].length; });
+      el.textContent = n
+        ? ('参数：' + names.length + ' 个参数 · ' + n + ' 格（每格 = 一条曲线，1 格 = 1 条 ACE 撤销记录）')
+        : '⚠️ 参数曲线勾着，但一个格子都没勾 ⇒ 这一项不会写任何东西（工具会如实报"什么都没做"）。';
+    }
+
+    function render() {
+      var on = $('useRange').checked;
+      $('b1').disabled = $('b2').disabled = !on;
+      var rt = rangeTicks();
+      $('rangeInfo').textContent = rt
+        ? ('范围：第 ' + beatOf(rt.lo) + '–' + beatOf(rt.hi) + ' 拍（第 ' + $('b1').value + '–' + $('b2').value + ' 小节）')
+        : '不限范围（整对片段）';
+      var si = parseInt($('src').value, 10), di = parseInt($('dst').value, 10);
+      var st = (S.mm && S.mm.tracks ? S.mm.tracks.filter(function (t) { return t.trackIndex === si; })[0] : null) || {};
+      var dt = (S.mm && S.mm.tracks ? S.mm.tracks.filter(function (t) { return t.trackIndex === di; })[0] : null) || {};
+      $('stat').textContent = '源 ' + si + (st.name ? '「' + st.name + '」' : '') + ' → 目标 ' + di + (dt.name ? '「' + dt.name + '」' : '') +
+        (S.roster && S.roster.engineGeneration ? ' · 目标引擎 ' + S.roster.engineGeneration : '');
+      $('dot').className = 'dot on';
+      draw();
+      $('prev').disabled = $('run').disabled = S.busy;
+    }
+
+    function values(dry) {
+      var v = {
+        srcTrack: $('src').value, dstTrack: $('dst').value,
+        lyrics: $('lyrics').checked ? '1' : '0',
+        pitch: $('pitch').checked ? '1' : '0',
+        phonemes: $('phon').checked ? '1' : '0',
+        dur: $('dur').checked ? '1' : '0',
+        consonants: $('cons').checked ? '1' : '0',
+        params: $('params').checked ? '1' : '0',
+        paramSel: $('params').checked ? JSON.stringify(pickedParams()) : '',        // 跨代必然换算（同代是恒等）；页面上不再有开关
+        map: 'range',
+        crossGen: '1',
+        dynEnv: pickedDynEnv(),
+        dynamic: $('dyn').checked ? '1' : '0',
+        tolTicks: ($('tol').value || '30'),
+        dryRun: dry ? '1' : '0',
+      };
+      if ($('useRange').checked) { v.beginBar = $('b1').value; v.endBar = $('b2').value; }
+      return v;
+    }
+
+    function showReport(d, dry) {
+      var el = $('rep'), j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+      if (!d.ok || !j) { el.className = 'bad'; el.textContent = '失败：' + (d.hint || '看主面板的命令日志'); return; }
+      var L = [];
+      L.push((dry ? '预览' : '已执行') + '：' + j.srcTrackName + ' → ' + j.dstTrackName +
+        ' · 配对 ' + j.pairCount + ' 对 · **配上 ' + j.matched + ' 个** · ' + (j.range || '不限范围'));
+      if (j.srcOnly) L.push('⚠️ 源侧 ' + j.srcOnly + ' 个在目标里找不到同位置的（**不新建**）');
+      if (j.dstOnly) L.push('目标侧 ' + j.dstOnly + ' 个没被碰到');
+      var attrs = [];
+      if (j.willSetLyrics) attrs.push('歌词 ' + j.willSetLyrics);
+      if (j.willSetPitch) attrs.push('音高 ' + j.willSetPitch);
+      if (j.willSetPhonemes) attrs.push('音素 ' + j.willSetPhonemes);
+      if (j.willResizeNotes) attrs.push('时值 ' + j.willResizeNotes);
+      if (j.willSetConsonants) attrs.push('辅音时长 ' + j.willSetConsonants + ' 处');
+      if (j.willWriteParamLayers) attrs.push('参数曲线 ' + j.willWriteParamLayers + ' 层 / ' + beatOf(j.paramTicks) + ' 拍');
+      if (j.willWriteDynamicAnchors) attrs.push('dynamic 锚点 ' + j.willWriteDynamicAnchors);
+      L.push(attrs.length ? '要写：' + attrs.join(' · ') : '⚠️ 一个属性都没算出要写的东西');
+      if (j.skippedDefaultPhonemes) L.push('默认发音的音素 ' + j.skippedDefaultPhonemes + ' 个**没搬**（只搬手动改过的）');
+      if (j.skippedDefaultConsonants) L.push('默认的辅音时长 ' + j.skippedDefaultConsonants + ' 个音符**没搬**（只搬手动改过的）');
+      var sk = (j.skipped || []).filter(function (x) { return /参数|世代|跳过|范围外/.test(x); }).slice(0, 5);
+      if (sk.length) L.push('说明：' + sk.join(' · '));
+      if (!dry && j.done) L.push('已写 ' + j.done.length + ' 条命令 ⇒ 不满意按顶栏「撤回这一批」。');
+      if (dry && j.plannedCalls) L.push('计划 ' + j.plannedCalls.length + ' 条命令（执行时才发）。');
+      el.className = 'ok';
+      el.textContent = L.join('\n');
+      render();
+    }
+
+    async function fire(dry) {
+      if (S.busy) return;
+      if (!($('lyrics').checked || $('pitch').checked || $('phon').checked ||
+            $('dur').checked || $('cons').checked || $('params').checked || $('dyn').checked)) {
+        $('rep').className = 'bad'; $('rep').textContent = '一个属性都没勾'; return;
+      }
+      if ($('src').value === $('dst').value) {
+        $('rep').className = 'bad'; $('rep').textContent = '源轨和目标轨是同一条 —— 轨内复制请用「轨内复制」窗口'; return;
+      }
+      if ($('useRange').checked && (parseInt($('b2').value, 10) || 0) < (parseInt($('b1').value, 10) || 0)) {
+        $('rep').className = 'bad'; $('rep').textContent = '结束小节要比开始小节大'; return;
+      }
+      S.busy = true; render();
+      $('rep').className = ''; $('rep').textContent = dry ? '预览中…' : '执行中…';
+      try {
+        var d = await call('xcopy.notes', values(dry));
+        showReport(d, dry);
+      } catch (e) {
+        $('rep').className = 'bad'; $('rep').textContent = '请求失败：' + e.message;
+      } finally {
+        S.busy = false; render();
+      }
+    }
+
+    /* ---------- 接线 ---------- */
+    load();
+    ['src', 'dst'].forEach(function (id) {
+      $(id).addEventListener('change', function () { save(); onTrackChange(); render(); });
+    });
+    ['b1', 'b2'].forEach(function (id) {
+      $(id).addEventListener('change', function () { save(); render(); });
+    });
+    $('useRange').addEventListener('change', function () { save(); render(); });
+    $('params').addEventListener('change', function () { renderParamTable(); render(); });
+    $('mm').addEventListener('pointerdown', mmDown);
+    $('mm').addEventListener('pointermove', mmMove);
+    $('mm').addEventListener('pointerup', mmUp);
+    $('mm').addEventListener('pointercancel', mmUp);
+    window.addEventListener('resize', draw);
+    $('refresh').addEventListener('click', function () { boot(); });
+    $('prev').addEventListener('click', function () { fire(true); });
+    $('run').addEventListener('click', function () { fire(false); });
+
+    /** 目标轨一换就要重读**目标轨**的花名册（引擎世代可能不同 ⇒ 可写的层也不同）。
+     *  ⚠️ 先把旧花名册**同步清掉**再取新的：取花名册是异步的，若不清，用户"换轨后立刻点参数曲线"
+     *  会按**上一条轨**的层发出去（实测撞过）—— 清掉之后页面发空名单，
+     *  Go 侧会按**目标片段自己**的花名册推默认层（它校验的也是目标那一侧）。 */
+    async function onTrackChange() {
+      S.roster = null;
+      S.srcRoster = null;
+      renderParamTable();
+      var di = $('dst').value, si = $('src').value;
+      try {
+        var d = await call('xcopy.view', { trackIndex: di });
+        S.roster = (d.calls && d.calls[0] && d.calls[0].json) || null;
+      } catch (e) { S.roster = null; }
+      // ⭐ 源轨的引擎世代也要读一次：`dynamic → 包络` 那张表**只在跨世代时**出现
+      try {
+        var s2 = await call('xcopy.view', { trackIndex: si });
+        S.srcRoster = (s2.calls && s2.calls[0] && s2.calls[0].json) || null;
+      } catch (e) { S.srcRoster = null; }
+      renderParamTable();
+    }
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      try {
+        var d = await call('view.minimap', { notes: '100' });
+        var m = (d.calls && d.calls[0] && d.calls[0].json) || null;
+        if (!d.ok || !m) throw new Error(d.hint || '拿不到工程缩略图');
+        S.mm = m;
+        var d2 = await call('xcopy.view', {});
+        S.cur = (d2.calls && d2.calls[0] && d2.calls[0].json) || null;
+
+        var tracks = (m.tracks || []).filter(function (t) { return (t.clips || []).length > 0; });
+        var html = tracks.map(function (t) {
+          return '<option value="' + t.trackIndex + '">' + t.trackIndex + ' · ' + (t.name || '(无名)') +
+            '（' + (t.soundSource || t.type || '') + '）</option>';
+        }).join('');
+        $('src').innerHTML = html; $('dst').innerHTML = html;
+        var curIdx = S.cur ? String(S.cur.trackIndex) : (tracks[0] ? String(tracks[0].trackIndex) : '0');
+        $('src').value = (S.saveSrc !== undefined && S.saveSrc !== '') ? S.saveSrc : curIdx;
+        $('dst').value = (S.saveDst !== undefined && S.saveDst !== '') ? S.saveDst
+          : String(tracks.length > 1 ? tracks[(tracks.findIndex(function (t) { return String(t.trackIndex) === $('src').value; }) + 1) % tracks.length].trackIndex : tracks[0].trackIndex);
+        if ($('src').value === $('dst').value && tracks.length > 1) {
+          $('dst').value = String(tracks.find(function (t) { return String(t.trackIndex) !== $('src').value; }).trackIndex);
+        }
+        await onTrackChange();
+        render();
+        $('rep').className = ''; $('rep').textContent = '还没跑。';
+      } catch (e) {
+        $('stat').textContent = '读取失败：' + e.message;
+        mmEmpty('ACE 没开或读取失败 —— 打开 ACE 后点「刷新」');
+        $('dot').className = 'dot';
+      }
+    }
+    boot();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

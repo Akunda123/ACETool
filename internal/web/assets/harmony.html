@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>和声</title>
+<style>
+  :root{--bg:#282c33;--fg:#d6dae0;--dim:#9498a0;--line:#3f434a;--inset:#242830;--ok:#5ebd7a;--warn:#d9a441;--bad:#e06c60}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 system-ui,"Segoe UI",sans-serif;overflow:hidden}
+  .wrap{height:100vh;display:flex;flex-direction:column;gap:8px;padding:10px;box-sizing:border-box;overflow:auto}
+  .hd{display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#6b7280}
+  .dot.on{background:var(--ok)}
+  .msg{color:var(--dim);font-size:12px}
+  .sp{flex:1}
+  .btn{border:1px solid var(--line);background:var(--inset);color:var(--fg);border-radius:6px;padding:4px 10px;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:default}
+  #mmwrap{border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:0 0 auto}
+  #mm{display:block;width:100%;height:96px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  select{background:var(--inset);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+  label.ck{display:inline-flex;align-items:center;gap:4px;color:var(--fg)}
+  .out{white-space:pre-wrap;word-break:break-word;background:var(--inset);border:1px solid var(--line);
+       border-radius:6px;padding:8px;font-size:12px;color:var(--dim);min-height:60px}
+  .out.ok{color:#a9e0b8}.out.bad{color:#f0b6b3}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd">
+    <span class="dot" id="dot"></span>
+    <span class="msg" id="stat">读取中…</span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div id="mmwrap"><canvas id="mm"></canvas></div>
+
+  <div class="row">
+    <span class="msg">调式</span>
+    <select id="key">
+      <option value="auto">自动检测</option>
+      <option value="0">C Maj/A min</option>
+      <option value="1">C# Maj/A# min</option>
+      <option value="2">D Maj/B min</option>
+      <option value="3">D# Maj/C min</option>
+      <option value="4">E Maj/C# min</option>
+      <option value="5">F Maj/D min</option>
+      <option value="6">F# Maj/D# min</option>
+      <option value="7">G Maj/E min</option>
+      <option value="8">G# Maj/F min</option>
+      <option value="9">A Maj/F# min</option>
+      <option value="10">A# Maj/G min</option>
+      <option value="11">B Maj/G# min</option>
+    </select>
+    <span class="msg">方向</span>
+    <select id="dir"><option value="up">向上</option><option value="down">向下</option></select>
+    <span class="msg">音程</span>
+    <select id="iv">
+      <option value="3rd" selected>三度</option><option value="6th">六度</option>
+      <option value="5th">五度</option><option value="4th">四度</option>
+      <option value="2nd">二度</option><option value="7th">七度</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <span class="msg">写出</span>
+    <select id="target">
+      <option value="newTrack" selected>新轨（原音高不动）</option>
+      <option value="inplace">就地改（原音符变和声）</option>
+    </select>
+    <span id="newIdxBox" style="display:none">
+      <span class="msg">新轨位置</span>
+      <input type="number" id="newIdx" min="0" step="1" placeholder="末尾" style="width:64px" autocomplete="off">
+    </span>
+    <span class="msg">范围</span>
+    <select id="scope">
+      <option value="auto" selected>选中的音符（没选中＝整个片段）</option>
+      <option value="clip">整个当前片段</option>
+      <option value="bars">指定小节</option>
+      <option value="track">整个轨道（所有片段）</option>
+    </select>
+    <span id="barBox" style="display:none">
+      <input type="number" id="b1" min="1" step="1" value="1" style="width:64px" autocomplete="off">
+      <span class="msg">–</span>
+      <input type="number" id="b2" min="1" step="1" value="4" style="width:64px" autocomplete="off">
+      <span class="msg">小节</span>
+    </span>
+    <label class="ck"><input type="checkbox" id="avoid" autocomplete="off"> 为不协和的三/六度调整一步</label>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="prev" type="button">预览（只看会改什么）</button>
+    <button class="btn" id="run" type="button">执行</button>
+    <span class="msg">执行进 ACE 撤销栈 ⇒ 顶栏「撤回这一批」可一次退回</span>
+  </div>
+
+  <div class="out" id="out">还没开始。</div>
+</div>
+
+<script src="canvasmap.js"></script>
+<script>
+  var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+  var $ = function (id) { return document.getElementById(id); };
+  var S = { mm: null, cur: 0, busy: false, sel: false, dropIdx: null };
+
+  async function call(toolId, values) {
+    var r = await fetch('/api/run', {
+      method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+    });
+    return r.json();
+  }
+  function firstJSON(d) { return (d.calls && d.calls[0] && d.calls[0].json) || null; }
+
+      // 读不到数据时把画布画成一句话（否则它停在默认 300x150，看着像坏了）
+    function mmEmpty(msg) {
+      try {
+        var el = document.getElementById('mm');
+        if (!el || !window.CanvasMap || !CanvasMap.draw) return;
+        CanvasMap.draw(el, null, { emptyText: msg });
+      } catch (e) { }
+    }
+
+    function draw() {
+    var el = $('mm');
+    if (!el) return;
+    if (!S.mm || !window.CanvasMap) return;
+    var data = S.mm;
+    if ($('target').value === 'newTrack') {
+      // 预览：新轨会排在**最后一条**，内容 = 这次要写的片段范围
+      var tpb = data.ticksPerBar || 1920;
+      var lo = 0, hi = 0;
+      if ($('scope').value === 'bars') {
+        lo = (Math.max(1, +$('b1').value || 1) - 1) * tpb;
+        hi = Math.max(lo + tpb, (+$('b2').value || 0) * tpb);
+      } else {
+        var cur = (data.tracks || []).filter(function (t) { return t.trackIndex === S.cur; })[0];
+        (cur && cur.clips || []).forEach(function (c) { if (!lo || c.begin < lo) lo = c.begin; hi = Math.max(hi, c.end); });
+      }
+      var list = (data.tracks || []).slice();
+      var phantom = { trackIndex: 999, name: '（新轨预览）',
+        clips: [{ begin: lo, end: hi, notes: [], minPitch: 48, maxPitch: 72 }] };
+      var at = S.dropIdx;
+      if (at == null || at < 0 || at > list.length) at = list.length;
+      list.splice(at, 0, phantom);
+      data = Object.assign({}, data, { tracks: list });
+    }
+    window.CanvasMap.draw(el, data, { hi: [S.cur], row: S.mm.tracks.length > 3 ? 34 : 60 });
+  }
+
+  function values(dry) {
+    var k = $('key').value;
+    var v = {
+      direction: $('dir').value, interval: $('iv').value, avoid: $('avoid').checked ? '1' : '0',
+      target: $('target').value, scope: $('scope').value,
+      dryRun: dry ? '1' : '0',
+    };
+    if (v.scope === 'bars') { v.beginBar = $('b1').value; v.endBar = $('b2').value; }
+    if (v.target === 'newTrack' && $('newIdx').value !== '') v.newTrackIndex = $('newIdx').value;
+    if (k !== 'auto') v.key = k;
+    return v;
+  }
+
+  function showReport(d, dry) {
+    var el = $('out'), j = firstJSON(d);
+    if (!d.ok || !j) { el.className = 'out bad'; el.textContent = '失败：' + (d.hint || '看主面板的命令日志'); return; }
+    var L = [];
+    L.push((dry ? '预览' : '已执行') + '：' + j.keyName + (j.keyFrom ? '（' + j.keyFrom + '）' : '') +
+      ' · ' + j.direction + ' ' + j.interval + '（' + j.diatonicSteps + ' 级）' +
+      (j.adjustDissonance ? ' · 不协和调整开' : ''));
+    L.push('扫了 ' + j.scanned + ' 个音符 · 会改 ' + j.willMove + ' · 不变 ' + j.unchanged +
+      ' · 写出：' + (j.target === 'newTrack' ? '新轨' + (j.newTrack && j.newTrack.trackName ? '「' + j.newTrack.trackName + '」' : '') : '就地'));
+    if (j.skipped && j.skipped.length) L.push('跳过/说明：' + j.skipped.join(' · '));
+    if (j.done && j.done.length) L.push('已做：' + j.done.join(' · '));
+    if (j.note) L.push(j.note);
+    if (!dry) L.push('不满意就按主面板顶栏的「撤回这一批」。');
+    el.className = 'out ok'; el.textContent = L.join('\n');
+  }
+
+  async function fire(dry) {
+    if (S.busy) return;
+    S.busy = true; $('prev').disabled = $('run').disabled = true;
+    $('out').className = 'out'; $('out').textContent = dry ? '预览中…' : '执行中…';
+    try {
+      var d = await call('tuning.harmony', values(dry));
+      showReport(d, dry);
+    } catch (e) {
+      $('out').className = 'out bad'; $('out').textContent = '请求失败：' + e.message;
+    } finally {
+      S.busy = false; $('prev').disabled = $('run').disabled = false;
+    }
+  }
+
+  async function boot() {
+    $('stat').textContent = '读取中…'; $('dot').className = 'dot';
+    try {
+      var d = await call('view.minimap', { notes: '80' });
+      var m = firstJSON(d);
+      if (!d.ok || !m) throw new Error(d.hint || '拿不到工程缩略图');
+      S.mm = m;
+      var cur = (m.tracks || []).filter(function (t) { return (t.clips || []).length; })[0];
+      S.cur = cur ? cur.trackIndex : 0;
+      draw(); syncScopeUi();
+      $('stat').textContent = '轨 ' + S.cur + (cur && cur.name ? '「' + cur.name + '」' : '') +
+        ' · ' + (m.ticksPerBar ? (m.ticksPerBar / 480) + '/4' : '') + ' · ' + (m.tracks || []).length + ' 条有声轨';
+      $('dot').className = 'dot on';
+    } catch (e) {
+      $('stat').textContent = '读取失败：' + e.message;
+      mmEmpty('ACE 没开或读取失败 —— 打开 ACE 后点「刷新」'); $('dot').className = 'dot';
+    }
+  }
+
+  /* 拖「新轨预览」：在图上按住上下拖，行号即新轨位置（0 起） */
+  var DRAG = null;
+  function rowAt(ev) {
+    var el = $('mm'), r = el.getBoundingClientRect();
+    var H = el.height / (window.devicePixelRatio || 1);
+    var RULER = 16, rows = (S.mm && S.mm.tracks ? S.mm.tracks.length : 0) + 1;
+    var rowH = (H - RULER - 8) / Math.max(1, rows);
+    var i = Math.floor((ev.clientY - r.top - RULER) / Math.max(1, rowH));
+    return Math.max(0, Math.min(rows - 1, i));
+  }
+  $('mm').addEventListener('pointerdown', function (ev) {
+    if ($('target').value !== 'newTrack') return;
+    DRAG = true;
+    $('mm').setPointerCapture(ev.pointerId);
+    S.dropIdx = rowAt(ev);
+    $('newIdx').value = S.dropIdx;
+    draw();
+  });
+  $('mm').addEventListener('pointermove', function (ev) {
+    if (!DRAG) return;
+    S.dropIdx = rowAt(ev);
+    $('newIdx').value = S.dropIdx;
+    draw();
+  });
+  $('mm').addEventListener('pointerup', function () { DRAG = null; });
+  $('mm').addEventListener('pointercancel', function () { DRAG = null; });
+
+  function syncScopeUi() {
+    $('barBox').style.display = ($('scope').value === 'bars') ? '' : 'none';
+    draw();
+  }
+  $('scope').addEventListener('change', syncScopeUi);
+  $('target').addEventListener('change', function () {
+    $('newIdxBox').style.display = ($('target').value === 'newTrack') ? '' : 'none';
+    draw();
+  });
+  $('newIdx').addEventListener('change', function () {
+    S.dropIdx = ($('newIdx').value === '') ? null : Math.max(0, +$('newIdx').value || 0);
+    draw();
+  });
+  ['b1', 'b2'].forEach(function (id) { $(id).addEventListener('change', draw); });
+  $('refresh').addEventListener('click', boot);
+  $('prev').addEventListener('click', function () { fire(true); });
+  $('run').addEventListener('click', function () { fire(false); });
+  window.addEventListener('resize', draw);
+  boot();
+</script>
+</body>
+</html>

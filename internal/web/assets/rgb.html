@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>RGB 变色</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75)}
+    .dot.on{background:#5ebd7a}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px}
+    .row{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+    .row>label{color:var(--dim,#9498a0);flex:0 0 auto;font-size:12px}
+    input[type=number],select{background:#242830;border:1px solid var(--line,#3f434a);color:var(--fg,#d6dae0);border-radius:5px;padding:4px 6px;font:inherit;font-size:12px}
+    details{border:1px solid var(--line,#3f434a);border-radius:7px;background:var(--panel,#2f333a);margin-bottom:10px}
+    summary{padding:7px 10px;cursor:pointer;font-size:12px;color:var(--fg,#d6dae0)}
+    .sw{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 10px}
+    .sw label{display:flex;align-items:center;gap:4px;cursor:pointer}
+    .sw i{display:block;width:20px;height:20px;border-radius:4px;border:1px solid rgba(0,0,0,.4)}
+    .sw input{accent-color:var(--accent,#1a73e8)}
+    .tracks{padding:0 10px 10px}
+    .trk{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line,#3f434a)}
+    .trk:last-child{border-bottom:0}
+    .trk.off{opacity:.45}
+    .trk .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+    .trk .meta{color:var(--dim,#9498a0);font-size:11px}
+    .btns{display:flex;gap:8px;align-items:center;padding:10px;border-top:1px solid var(--line,#3f434a);flex:0 0 auto}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn.on{background:rgba(26,115,232,.2);border-color:var(--accent,#1a73e8);color:var(--accent,#1a73e8)}
+    .msg{font-size:12px;color:var(--dim,#9498a0)}
+    .msg.bad{color:var(--bad,#e06c75)}
+    /* ⚠️ 撤销栈警示条：**常驻、不随内容滚走**（放在 .wrap 外面），因为这条是"跑着跑着才会发生"的副作用，
+       滚出视野就等于没有。配色用项目的 warn 色，不做可关闭 —— 关掉它并不会让记录消失。
+       ⚠️ 版式踩过一次：原来把 `标题 / 长句 / 计数` 三个放**一行** flex，长句一换行就把计数挤到窗口外、
+       "0 条"被切掉（无头截图抓到的）。现在拆成**上下两块**：上行"标题 + 计数右对齐"，下行才是长句。 */
+    .warnbar{flex:0 0 auto;padding:7px 10px;font-size:11.5px;line-height:1.5;
+      background:rgba(217,164,65,.13);border-bottom:1px solid rgba(217,164,65,.35);color:var(--fg,#d6dae0)}
+    .warnbar .hd{display:flex;align-items:baseline;gap:8px}
+    .warnbar b{color:var(--warn,#d9a441);font-weight:600}
+    .warnbar .cnt{margin-left:auto;color:var(--warn,#d9a441);font-variant-numeric:tabular-nums;white-space:nowrap}
+    .warnbar .txt{color:var(--dim,#9498a0)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>RGB 变色</h1>
+    <span class="sp"></span>
+    <span class="dot" id="dot"></span><span class="msg" id="stat">未连接</span>
+  </div>
+
+  <!-- ⚠️ 实测（HANDOVER §37.4）：`track set --color` **每改一次颜色就在 ACE 的共享撤销栈里压一条**
+       （name「更改轨道颜色」/ actor「远程控制」），实测 13 条/秒；ACE **没有**批量或抑制历史的开关。
+       所以这里**如实报数**：跑久了 Ctrl+Z 会被自己这场变色挡住 —— 宁可看得见，也不要用户事后才发现。 -->
+  <div class="warnbar">
+    <div class="hd">
+      <b>⚠ 撤销栈警告</b>
+      <span class="cnt" id="undoN">本次 0 条</span>
+    </div>
+    <div class="txt">每改一次颜色，ACE 的撤销栈就多一条记录（本工具关不掉）。跑久了 Ctrl+Z 回不到你自己的操作。</div>
+  </div>
+
+  <div class="wrap">
+    <div class="row">
+      <label>变色间隔</label>
+      <input type="number" id="ms" min="60" max="5000" step="10" autocomplete="off" style="width:80px"> ms
+    </div>
+
+    <details id="colorsBox">
+      <summary>变色列表（<span id="cCount">0</span>/28 已勾选）</summary>
+      <div class="sw" id="sw"></div>
+    </details>
+
+    <div class="row">
+      <label>轨道范围</label>
+      <select id="scope">
+        <option value="current">当前轨（跟随标记线）</option>
+        <option value="picked">选定</option>
+      </select>
+    </div>
+
+    <details id="tracksBox" hidden>
+      <summary>选择轨道（<span id="tCount">0</span> 条已勾选 · 空轨不列）</summary>
+      <div class="tracks" id="trk"></div>
+    </details>
+  </div>
+
+  <div class="btns">
+    <button class="btn" id="run" type="button">开始变色</button>
+    <button class="btn" id="refresh" type="button">重读轨道</button>
+    <span class="msg" id="msg"></span>
+  </div>
+
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var LS = 'acetool.rgb';
+    /* ⚠️ 这 28 个 hex **逐字抄自** `internal/tools/color.go` 的 `palette`（顺序也一样）——
+     * 它是 ACE 官方调色板。`devtools/check-ui.js` 会比对两份表，漂了就报错。
+     * （第一版我凭记忆手写了一份，**是错的**，被那个自检抓出来了。）
+     * 以后加 `GET /api/palette` 就该改成拉取，别让两份表存在。 */
+    var COLORS = ['#EC4F44','#FFBABA','#F66C03','#A15C27','#FF9A4E','#FFC394','#F6D203','#F9FF8C',
+                  '#CCFF31','#859C3F','#47EC57','#95FFA8','#03F6B1','#92FFE0','#03C9F6','#58DEFF',
+                  '#98C5FD','#038DF6','#5882FF','#6A19FF','#9155FF','#9D03F6','#C053FF','#B892FF',
+                  '#FF93F2','#F603DA','#FF56EB','#FF59AC'];
+
+    var $ = function (id) { return document.getElementById(id); };
+    var S = { ms: 200, on: new Array(COLORS.length).fill(true), scope: 'current', picked: {}, i: 0,
+              running: false, gen: 0, handle: null, undo: 0 };
+
+    function load() {
+      try {
+        var d = JSON.parse(localStorage.getItem(LS) || '{}');
+        if (typeof d.ms === 'number') S.ms = d.ms;
+        if (Array.isArray(d.on) && d.on.length === COLORS.length) S.on = d.on;
+        if (d.scope) S.scope = d.scope;
+        if (d.picked) S.picked = d.picked;
+      } catch (e) { }
+    }
+    function save() {
+      localStorage.setItem(LS, JSON.stringify({ ms: S.ms, on: S.on, scope: S.scope, picked: S.picked }));
+    }
+
+    function toast(t, ok) { $('msg').className = 'msg' + (ok ? '' : ' bad'); $('msg').textContent = t; }
+
+    /* ---- 颜色列表（可展开、逐个勾选） ---- */
+    function renderColors() {
+      $('sw').innerHTML = COLORS.map(function (c, i) {
+        return '<label title="' + c + '"><input type="checkbox" data-c="' + i + '"' + (S.on[i] ? ' checked' : '') +
+          '><i style="background:' + c + '"></i></label>';
+      }).join('');
+      $('sw').querySelectorAll('[data-c]').forEach(function (el) {
+        el.addEventListener('change', function () {
+          S.on[parseInt(el.getAttribute('data-c'), 10)] = el.checked;
+          $('cCount').textContent = S.on.filter(Boolean).length;
+          save();
+          if (!S.on.filter(Boolean).length) toast('一个颜色都没勾 ⇒ 轮转会空跑', false);
+        });
+      });
+      $('cCount').textContent = S.on.filter(Boolean).length;
+    }
+
+    /* ---- 轨道列表（用工程缩略图的同一份数据；空轨已被 track list 过滤） ---- */
+    async function loadTracks() {
+      try {
+        var d = await (await fetch('/api/run', {
+          method: 'POST', headers: H, body: JSON.stringify({ toolId: 'view.minimap', values: { notes: '0' } }),
+        })).json();
+        var j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+        if (!d.ok || !j) { toast('读轨道失败：' + (d.hint || ''), false); return; }
+        S.tracks = j.tracks || [];
+        $('dot').className = 'dot on';
+        $('stat').textContent = 'ACE 在线';
+        renderTracks();
+      } catch (e) {
+        toast('读轨道失败：' + e.message, false);
+      }
+    }
+
+    function renderTracks() {
+      $('trk').innerHTML = S.tracks.map(function (t) {
+        var on = !!S.picked[t.trackIndex];
+        var cl = (t.clips || []).length;
+        return '<div class="trk' + (on ? '' : ' off') + '" data-t="' + t.trackIndex + '">' +
+          '<input type="checkbox" data-p="' + t.trackIndex + '"' + (on ? ' checked' : '') + '>' +
+          '<span class="nm">' + (t.name || ('轨 ' + t.trackIndex)) + '</span>' +
+          '<span class="meta">#' + t.trackIndex + ' · ' + (t.type || '') + ' · ' + cl + ' 片段</span></div>';
+      }).join('');
+      $('trk').querySelectorAll('[data-p]').forEach(function (el) {
+        el.addEventListener('change', function () {
+          var k = parseInt(el.getAttribute('data-p'), 10);
+          if (el.checked) S.picked[k] = true; else delete S.picked[k];
+          save();
+          renderTracks();   // 未勾选的整行**半透明**
+        });
+      });
+      $('tCount').textContent = Object.keys(S.picked).length;
+    }
+
+    /* ---- 轮转 ----
+     * 节奏：**叠着走**（`setInterval` 不等上一轮）—— 用户说这版"看着好看/快"。
+     * 停止：靠**世代门**（`POST /api/gate` 推 gen），排队中的旧请求到 exe 入口就被跳过，
+     *      所以"叠着走"不会变成"停不下来"。
+     * ⚠️ 早先那版"点停了还依次走一轮"是因为只在浏览器侧叫停：`clearInterval` 挡不住**已发出的**请求。
+     */
+    function gate(gen) {
+      // `keepalive` 是为了**关窗口那一下**：`beforeunload` 里发的普通 fetch 会被取消，
+      // 而关窗正是最需要推世代的时候（否则在飞的那几条还会照跑）。
+      // ⚠️ 不能用 `sendBeacon`：它发不了 `X-ACETool` 头，会被写口挡成 403。
+      return fetch('/api/gate', {
+        method: 'POST', headers: H, body: JSON.stringify({ gen: gen }), keepalive: true,
+      }).catch(function () { });
+    }
+
+    async function tick(g) {
+      if (!S.running || g !== S.gen) return;
+      var list = COLORS.filter(function (c, k) { return S.on[k]; });
+      if (!list.length) { stop('没有勾任何颜色'); return; }
+      var color = list[S.i % list.length];
+      S.i++;
+      var targets = [];
+      if (S.scope === 'current') targets = [null];              // null = 跟随 caret
+      else targets = Object.keys(S.picked).map(Number);
+      if (!targets.length) { stop('「选定」模式下一条轨都没勾'); return; }
+      // ⚠️ `track set` **一次只能设一条轨**（`help track set`：`--track-index`/`--track-uuid` 二选一、
+      // 必须给一个，没有批量形式）⇒ N 条轨就是 N 次命令、N 个进程，这是硬底。
+      // ⭐ 每条请求都带 `_gen`：停止时 exe 侧世代推进一格 ⇒ 还在排队的旧请求到入口就被判过期、直接不执行
+      //    （不 spawn CLI）⇒ 所以这里可以并发发，节奏快，而停止依然瞬间生效。
+      var doneN = 0, badN = 0, firstErr = '';
+      await Promise.all(targets.map(async function (t) {
+        var vals = { color: color, _gen: String(g) };
+        if (t !== null) vals.trackIndex = String(t);
+        try {
+          var d = await (await fetch('/api/run', {
+            method: 'POST', headers: H, body: JSON.stringify({ toolId: 'track.color', values: vals }),
+          })).json();
+          if (d.hint === '已叫停，未执行') return;              // 被世代门跳过：不是失败，也不必报错
+          // ⚠️ 单条失败**不该掐掉整场**（比如某条轨那一刻正忙）—— 只有**这一轮全军覆没**才停，
+          // 那才是系统性问题（ACE 忙 / 桥断了），继续转下去只会刷屏。
+          if (!d.ok) { badN++; if (!firstErr) firstErr = d.hint || ''; return; }
+          doneN++;
+          S.undo++;                                   // 每成功一次 = ACE 撤销栈里多一条
+          $('undoN').textContent = '本次 ' + S.undo + ' 条';
+        } catch (e) { badN++; if (!firstErr) firstErr = e.message; }
+      }));
+      if (!S.running || g !== S.gen) return;
+      if (badN && !doneN) { stop('设色失败：' + firstErr); return; }
+      $('stat').textContent = color + (targets.length > 1 ? ' × ' + doneN + ' 轨' : '')
+        + (badN ? '（' + badN + ' 条没成）' : '');
+    }
+
+    function start() {
+      if (S.running) return;
+      if (S.scope === 'picked' && !Object.keys(S.picked).length) { toast('先勾至少一条轨', false); return; }
+      S.running = true;
+      S.gen++;
+      S.undo = 0;                     // 计数按「这一次开跑」重来
+      $('undoN').textContent = '本次 0 条';
+      gate(S.gen);                    // 新世代：上一世代的残留请求全部作废
+      $('run').textContent = '停止变色';
+      $('run').classList.add('on');
+      toast('');
+      tick(S.gen);
+      S.handle = setInterval(function () { tick(S.gen); }, Math.max(60, S.ms));   // 叠着走
+    }
+    function stop(why) {
+      S.running = false;
+      S.gen++;
+      gate(S.gen);                    // ⭐ 关键：让**已发出、还在排队**的请求在 exe 侧变成空操作
+      clearInterval(S.handle);
+      S.handle = null;
+      $('run').textContent = '开始变色';
+      $('run').classList.remove('on');
+      if (why) toast(why, false);
+    }
+
+    /* ---- 绑定 ---- */
+    load();
+    $('ms').value = S.ms;
+    $('scope').value = S.scope;
+    $('ms').addEventListener('input', function () { S.ms = Math.max(60, parseInt($('ms').value, 10) || 200); save(); });
+    $('scope').addEventListener('change', function () {
+      S.scope = $('scope').value;
+      $('tracksBox').hidden = S.scope !== 'picked';
+      save();
+      if (S.scope === 'picked') loadTracks();
+    });
+    $('run').addEventListener('click', function () { if (S.running) stop(); else start(); });
+    $('refresh').addEventListener('click', loadTracks);
+    window.addEventListener('beforeunload', function () { stop(); });
+
+    renderColors();
+    $('tracksBox').hidden = S.scope !== 'picked';
+    if (S.scope === 'picked') loadTracks();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

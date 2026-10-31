@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>ACETool · ACE 工具箱</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">ACETool<span class="sub">ACE Studio 工具箱</span></div>
+    <div class="status">
+      <span class="pill idle" id="overall">检测中…</span>
+      <span class="meta" id="meta"></span>
+    </div>
+    <button class="btn ghost" id="recheck" type="button">重新自检</button>
+    <a class="btn ghost" href="home.html" title="主页面（功能骨架 · 空按钮）">🏠 主页面</a>
+  </header>
+
+  <div class="body">
+    <aside class="sidebar" id="sidebar">
+      <div class="cat">载入工具清单…</div>
+    </aside>
+    <main class="main" id="main">
+      <div class="empty">← 左边选一个工具</div>
+    </main>
+  </div>
+
+  <footer class="logbar">
+    <div class="logbar-head">
+      <button class="btn ghost" id="logtoggle" type="button">
+        命令日志 <span class="badge" id="logcount">0</span>
+      </button>
+      <span class="dim">每次执行都按纪律留痕：argv · exit code · 耗时 · stdout/stderr · error.code</span>
+      <button class="btn ghost" id="logclear" type="button">清空</button>
+    </div>
+    <div class="logbar-body" id="logbody" hidden></div>
+  </footer>
+
+  <script src="notation-glyphs.js"></script>
+  <script src="notation.js"></script>
+  <script src="minimap.js"></script>
+  <script src="find.js"></script>
+  <script src="app.js"></script>
+  <script src="shortcuts.js"></script>
+</body>
+
+</html>

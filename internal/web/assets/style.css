@@ -1,0 +1,367 @@
+:root {
+  --bg: #282c33;
+  --panel: #2f333a;
+  --panel2: #171a20;
+  --line: #3f434a;
+  --fg: #d6dae0;
+  --dim: #9498a0;
+  --ok: #5ebd7a;
+  --bad: #e06c75;
+  --warn: #d9a441;
+  --accent: #1a73e8;
+  --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-size: 15px; font-weight: 700; letter-spacing: .3px; }
+.brand .sub { color: var(--dim); font-weight: 400; font-size: 13px; margin-left: 8px; }
+.status { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; flex-wrap: wrap; }
+.meta { color: var(--dim); font-size: 12.5px; }
+.meta .mono { font-family: var(--mono); }
+
+/* ---------- 主体 ---------- */
+.body { flex: 1 1 auto; display: flex; min-height: 0; }
+
+.sidebar {
+  flex: 0 0 236px;
+  overflow: auto;
+  background: var(--panel2);
+  border-right: 1px solid var(--line);
+  padding: 10px 8px 20px;
+}
+.cat { color: var(--dim); font-size: 12px; font-weight: 600; letter-spacing: .6px; padding: 12px 10px 6px; }
+.tool {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.tool:hover { background: #ffffff0d; }
+.tool.active { background: #2f7cf622; color: #cfe2ff; }
+.tool .kind { float: right; font-size: 11px; color: var(--dim); }
+.tool.active .kind { color: #8ab6ff; }
+
+.main { flex: 1 1 auto; overflow: auto; padding: 18px 22px 40px; }
+.empty { color: var(--dim); padding: 40px 0; text-align: center; }
+
+h2.title { margin: 0 0 4px; font-size: 17px; }
+.desc { color: var(--dim); font-size: 13px; margin-bottom: 4px; }
+.source { color: var(--dim); font-size: 12px; margin-bottom: 16px; }
+.source code { font-family: var(--mono); color: var(--warn); }
+
+/* ---------- 表单 ---------- */
+.form { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-end; margin: 14px 0 18px; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 180px; }
+.field > label { font-size: 12.5px; color: var(--dim); }
+.field .hint { font-size: 11.5px; color: #7a7a7a; max-width: 420px; }
+input[type="text"], input[type="number"], select {
+  background: #242830;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  min-width: 180px;
+}
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; padding-bottom: 8px; }
+.check input { width: 15px; height: 15px; accent-color: var(--accent); }
+
+.btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #242830;
+  background: var(--accent);
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 16px;
+  cursor: pointer;
+}
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.ghost { background: transparent; color: var(--dim); border: 1px solid var(--line); font-weight: 500; }
+.btn.ghost:hover { color: var(--fg); }
+
+/* ---------- 结果 ---------- */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 11px; border-radius: 999px;
+  font-weight: 600; font-size: 12.5px;
+  border: 1px solid transparent;
+}
+.pill.ok { color: var(--accent); background: #1a73e81a; border-color: #1a73e840; }
+.pill.bad { color: var(--bad); background: #e06c751a; border-color: #e06c7540; }
+.pill.warn { color: var(--warn); background: #d9a4411a; border-color: #d9a44140; }
+.pill.idle { color: var(--dim); background: #9498a01a; border-color: #9498a040; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 0 0 14px;
+  overflow: hidden;
+}
+.card-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.card-head .name { font-weight: 600; font-size: 13.5px; flex: 1 1 auto; }
+.card-head .time { color: var(--dim); font-size: 12px; font-family: var(--mono); }
+.card-body { padding: 12px 14px; }
+
+.hint {
+  margin: 0 0 14px;
+  padding: 10px 13px;
+  border-left: 3px solid var(--warn);
+  background: #d9a4410f;
+  border-radius: 0 6px 6px 0;
+  color: #efe0b8;
+  font-size: 13px;
+}
+.hint.bad { border-color: var(--bad); background: #e06c750f; color: #ffc7c1; }
+.hint.ok { border-color: var(--ok); background: #5ebd7a0f; color: #bdf0d2; }
+.hint.warn { border-color: var(--warn); background: #d9a4410f; color: #efe0b8; }
+.pill.warn { color: var(--warn); background: #d9a4411a; border-color: #d9a44140; }
+
+table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.tbl th, table.tbl td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.tbl th { color: var(--dim); font-weight: 600; font-size: 11.5px; letter-spacing: .4px; }
+table.tbl td.mono, table.tbl th.mono { font-family: var(--mono); }
+table.tbl td.wrap { white-space: normal; word-break: break-word; }
+table.tbl tr:last-child td { border-bottom: 0; }
+table.tbl td.num { text-align: right; font-family: var(--mono); }
+
+details.raw { margin-top: 10px; }
+details.raw > summary { cursor: pointer; color: var(--dim); font-size: 12.5px; }
+pre.code {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  max-height: 380px;
+  background: #242830;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #c4c4c4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.dim { color: var(--dim); }
+.mono { font-family: var(--mono); }
+
+/* ---------- 命令日志 ---------- */
+.logbar { flex: 0 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
+.logbar-head { display: flex; align-items: center; gap: 12px; padding: 7px 16px; }
+.logbar-head .dim { flex: 1 1 auto; font-size: 12px; }
+.badge {
+  display: inline-block; min-width: 18px; padding: 0 5px;
+  border-radius: 9px; background: #ffffff14; color: var(--dim);
+  font-size: 11px; text-align: center; font-family: var(--mono);
+}
+.logbar-body { max-height: 40vh; overflow: auto; padding: 4px 16px 14px; border-top: 1px solid var(--line); }
+.logitem { border-bottom: 1px solid var(--line); padding: 7px 0; font-size: 12.5px; }
+.logitem:last-child { border-bottom: 0; }
+.logitem .row1 { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+.logitem .cmd { font-family: var(--mono); color: #b0b0b0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logitem .code { font-family: var(--mono); font-weight: 700; }
+.logitem .code.ok { color: var(--ok); }
+.logitem .code.bad { color: var(--bad); }
+.logitem .ms { color: var(--dim); font-family: var(--mono); font-size: 11.5px; }
+.logitem pre.code { max-height: 260px; }
+
+/* ---------- 变色测试台 ---------- */
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.swatch {
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: #3a4048;
+  border: 1px solid var(--line);
+  box-shadow: inset 0 0 0 1px #00000033;
+}
+.btn.danger { background: var(--bad); color: #1a0f0e; }
+#cyclems { width: 84px; min-width: 0; }
+
+/* ---------- 查找面板（find.notes 专用）----------
+ * 窄栏 + 竖排，模仿 SV 的 SidePanelSection（原脚本的 rows 就是一行一行的）。
+ */
+.findpanel {
+  max-width: 560px;      /* 2026-10-08：下面多了「结果预览」（缩略图）⇒ 420px 太窄，图挤成一条 */
+  margin: 14px 0 18px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* 结果框：**动态、不可编辑**的那一块（`<pre id=fpinfo>`，内容由 JS 写；不是输入控件） */
+.findpanel .fp-info {
+  margin: 0;
+  min-height: 118px;
+  max-height: 260px;
+  overflow: auto;
+  background: #242830;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #d6f5e0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.findpanel .fp-wide { width: 100%; }
+.findpanel .fp-two { display: flex; gap: 8px; }
+.findpanel .fp-two > * { flex: 1 1 0; min-width: 0; }
+.findpanel .fp-label { font-size: 12.5px; color: var(--dim); margin-top: 2px; }
+.findpanel .fp-tag {
+  margin-left: 6px; padding: 0 6px; border-radius: 999px;
+  background: #2f7cf622; color: #8ab6ff; font-size: 10.5px;
+}
+.findpanel input[type="text"], .findpanel select { width: 100%; min-width: 0; }
+.findpanel .fp-text { font-family: var(--mono); }
+.findpanel .fp-checks { display: flex; gap: 18px; }
+.findpanel .fp-checks .check { padding-bottom: 0; }
+.findpanel .fp-note { font-size: 11.5px; color: #7a7a7a; line-height: 1.55; }
+.findpanel .fp-stat { font-size: 11.5px; color: var(--dim); font-family: var(--mono); }
+/* ---------- 查找页 2026-10-08 加的那几块 ----------
+ * ① 预览（`view.minimap` 那张图 + 命中高亮，**图上不写任何标题/说明**）
+ * ② 上一项/序号/下一项 那一行
+ * ③ 「只在某个模式出现」的几块靠 `hidden` 切换 ⇒ 必须保证 `[hidden]` 真的不显示
+ *    （`.fp-two > *{flex:1 1 0}` 之类的 display 规则会盖掉浏览器默认的 `display:none`）。
+ */
+.findpanel [hidden] { display: none !important; }
+.findpanel .fp-map {
+  border: 1px solid var(--line); border-radius: 7px; background: #282c33;
+  overflow: auto; max-height: 260px; margin-top: 4px;
+}
+.findpanel .fp-map svg { display: block; }
+.findpanel .fp-idx { flex: 0 0 74px; min-width: 0; text-align: center; font-family: var(--mono); }
+.findpanel .fp-slot { min-width: 0; }
+#fpresult { max-width: 900px; }
+
+/* ---------- 歌词面板（lyric.pages 专用）----------
+ * 和 SV 脚本 [SV2]歌词侧栏.js 同 UI：一整列竖排 ——
+ * 信息框 → 分割成字符 → N 行文本框 → 上一页（整行）→ 下一页（整行）→ 下拉。
+ * 注意按钮是**各自整行**的（原脚本两个独立的 Container），不是并排。
+ */
+.lyricpanel {
+  max-width: 460px;
+  margin: 14px 0 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lyricpanel .lp-info {
+  width: 100%;
+  min-height: 62px;
+  resize: vertical;
+  background: #242830;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #d6f5e0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+.lyricpanel .lp-split { padding-bottom: 0; margin: 2px 0 2px; }
+.lyricpanel .lp-text {
+  width: 100%;
+  resize: vertical;
+  overflow: hidden;
+  background: #242830;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 9px;
+  line-height: 1.5;
+}
+.lyricpanel .lp-text:focus { outline: none; border-color: var(--accent); }
+.lyricpanel .lp-wide { width: 100%; }
+.lyricpanel .lp-goto { width: 100%; min-width: 0; margin-top: 2px; }
+/* 「刷新」在面板外面 —— 被复刻的那几行里不该多一个原脚本没有的控件 */
+.lp-outside { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 620px; }
+.lp-outside .dim { font-size: 11.5px; }
+.lp-outside .lp-auto { padding-bottom: 0; }
+.lp-outside #lpautoms { width: 76px; min-width: 0; padding: 4px 8px; font-size: 12.5px; }
+#lyricresult { max-width: 900px; }
+
+/* ---------- 工具面板（note.join / select.playhead / lyric.* 专用）----------
+ * 照 SV 脚本 AKD工具侧栏.js 的版式：**两列一行的按钮网格** + 末尾的说明 ComboBox/TextArea。
+ */
+.nopanel {
+  max-width: 520px;
+  margin: 14px 0 12px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.nopanel .np-wide { width: 100%; }
+.nopanel .np-two { display: flex; gap: 8px; }
+.nopanel .np-two > * { flex: 1 1 0; min-width: 0; }
+.nopanel .np-btn { padding: 7px 8px; font-size: 12.5px; }
+.nopanel .np-btn[data-cur="1"] { border-color: var(--accent); color: #cfe2ff; }
+.nopanel .np-paste { display: flex; align-items: center; gap: 8px; }
+.nopanel .np-paste input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.nopanel .np-dry { padding-bottom: 0; margin-top: 2px; }
+.nopanel .np-label { font-size: 12.5px; color: var(--dim); margin-top: 4px; }
+.nopanel .np-goto { width: 100%; min-width: 0; }
+.nopanel .np-helpbox {
+  width: 100%;
+  min-height: 62px;
+  resize: vertical;
+  background: #242830;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #c4c4c4;
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 8px 10px;
+}
+#npresult { max-width: 900px; }

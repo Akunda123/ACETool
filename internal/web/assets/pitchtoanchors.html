@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>音高线转锚点</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;flex:0 0 auto}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px}
+    .warn{margin:0 0 10px;padding:8px 10px;border:1px solid var(--warn,#d9a441);border-left-width:4px;
+      border-radius:6px;background:rgba(217,164,65,.12);color:#ffd89a;font-size:12.5px}
+    .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0}
+    .row .lb{color:var(--dim,#9498a0);font-size:12px;flex:0 0 auto}
+    .row .sp{flex:1}
+    .msg{color:var(--dim,#9498a0);font-size:12px}
+    input[type=number]{background:var(--inset,#242830);border:1px solid var(--line,#3f434a);color:var(--fg,#d6dae0);
+      border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;width:64px;font-variant-numeric:tabular-nums}
+    label.ck{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer}
+    label.ck input{accent-color:var(--accent,#1a73e8)}
+    #mmwrap{position:relative;flex:0 0 auto;border:1px solid var(--line,#3f434a);border-radius:6px;overflow:hidden;
+      background:var(--inset,#242830);margin:6px 0}
+    #mm{display:block;width:100%;height:132px;touch-action:none;cursor:crosshair}
+    .legend{display:flex;gap:14px;align-items:center;font-size:11.5px;color:var(--dim,#9498a0);flex-wrap:wrap}
+    .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+    .step{display:flex;align-items:center;gap:8px;margin:6px 0}
+    .step b{flex:0 0 auto;font-weight:500;color:var(--ok,#5ebd7a)}
+    .out{margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--inset,#242830);
+      border:1px solid var(--line,#3f434a);border-radius:6px;padding:8px 10px;font:12px/1.55 ui-monospace,Consolas,monospace;
+      color:var(--dim,#9498a0);min-height:70px;max-height:40vh;overflow:auto}
+    .out.ok{color:var(--ok,#5ebd7a)}
+    .out.bad{color:var(--bad,#e06c75)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>音高线转锚点</h1>
+    <span class="stat"><span class="dot" id="dot"></span><span id="stat">读取中…</span></span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <div class="warn">把**区间里的音高线**拟合成**锚点**写回同一片段：<b>改的是工程文件</b>。
+      顺序 ① 保存工程 → ② 执行（读路径 → 改 → 替换）→ ③ 自动重新加载。执行前会自动备份到临时目录。
+      ⚠️ ② 之后 ACE 的撤销栈会被清掉，还原只能靠页面上的「恢复备份」。</div>
+
+    <div class="row">
+      <span class="lb">区间</span>
+      <input type="number" id="s1" min="1" step="1" autocomplete="off">
+      <span class="msg">–</span>
+      <input type="number" id="s2" min="1" step="1" autocomplete="off">
+      <span class="msg">小节</span>
+      <span class="sp"></span>
+      <span class="lb" title="允许的最大音高误差；0.05 = 5 音分">误差上限</span>
+      <input type="number" id="tol" min="0" step="0.01" autocomplete="off" style="width:80px">
+      <span class="msg">半音</span>
+      <span class="lb" title="0 = 不限；超过上限会自动放宽容差（结果里会报“实际容差”）">锚点上限</span>
+      <input type="number" id="maxA" min="0" step="1" autocomplete="off" style="width:72px">
+      <span class="msg">个</span>
+      <label class="ck" title="颤音的峰谷点强制保留，避免被插值抹平"><input type="checkbox" id="extremes" checked autocomplete="off"> 保留颤音峰谷</label>
+    </div>
+
+    <div id="mmwrap"><canvas id="mm"></canvas></div>
+    <div class="row legend">
+      <span><i style="background:#1a73e8"></i>要转换的区间</span>
+      <span class="sp"></span>
+      <span>在图上拖 = 拉区间</span>
+    </div>
+    <div class="msg" id="rangeInfo"></div>
+
+    <div class="step">
+      <b>①</b>
+      <button class="btn" id="p1" type="button">保存工程</button>
+      <span class="msg" id="p1stat">未执行</span>
+    </div>
+    <div class="step">
+      <b>②</b>
+      <button class="btn" id="prev" type="button" disabled>预览（只看会改什么，不写文件）</button>
+      <button class="btn" id="p2" type="button" disabled>执行（改工程文件）</button>
+      <span class="msg" id="p2stat">先做第 ① 步</span>
+    </div>
+    <div class="step">
+      <b>③</b>
+      <button class="btn" id="undo" type="button" disabled>恢复备份</button>
+      <span class="msg" id="ustat">没得恢复</span>
+    </div>
+
+    <div class="out" id="out">还没执行。</div>
+  </div>
+
+  <script src="canvasmap.js"></script>
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    var LS = 'acetool.pitchtoanchors';
+    var S = { view: null, s1: 1, s2: 2, tol: 0.05, maxA: 0, path: '', busy: false, drag: null, boxes: null };
+
+    function load() {
+      try {
+        var j = JSON.parse(localStorage.getItem(LS) || '{}');
+        if (j.s1) S.s1 = j.s1;
+        if (j.s2) S.s2 = j.s2;
+        if (j.tol !== undefined) S.tol = j.tol;
+        if (j.maxA !== undefined && j.maxA !== null) S.maxA = j.maxA;
+      } catch (e) { }
+    }
+    function save() { try { localStorage.setItem(LS, JSON.stringify({ s1: S.s1, s2: S.s2, tol: S.tol, maxA: S.maxA })); } catch (e) { } }
+
+    async function postRun(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      return data;
+    }
+    function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
+    function say(text, cls) { var el = $('out'); el.className = 'out' + (cls ? ' ' + cls : ''); el.textContent = text; }
+    function busy(on) {
+      S.busy = on;
+      $('p1').disabled = on;
+      $('prev').disabled = on || !S.path;
+      $('p2').disabled = on || !S.path;
+      $('refresh').disabled = on;
+    }
+
+    function barToTick(bar) { var v = S.view, tpb = (v && v.ticksPerBar) || 1920; return Math.round((bar - 1) * tpb); }
+    function beatOf(tick) { return String(Math.round((tick / 480) * 100) / 100); }
+    function spans() {
+      var v = S.view;
+      if (!v) return null;
+      var a = barToTick(S.s1), b = barToTick(S.s2 + 1);
+      return { a: a, b: b };
+    }
+
+    function placeholder(el, msg) {
+      var dpr = window.devicePixelRatio || 1;
+      var w = Math.max(320, el.clientWidth || 0), h = Math.max(48, el.clientHeight || 0);
+      el.width = Math.round(w * dpr); el.height = Math.round(h * dpr);
+      var g = el.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = '#141a21'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#8a97a6';
+      g.font = '12px "Microsoft YaHei",system-ui,sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(msg, w / 2, h / 2);
+    }
+
+    var MM = null;
+    function draw() {
+      var v = S.view, el = $('mm');
+      if (!el) return;
+      if (!v || !window.CanvasMap) { placeholder(el, 'ACE 没开或读取失败 —— 打开 ACE 后点「刷新」'); return; }
+      var clips = (v.clips || []).map(function (cl) {
+        return { uuid: cl.uuid, clipIndex: cl.clipIndex, name: cl.name, begin: cl.begin, end: cl.end,
+          notes: cl.notes || [], minPitch: cl.minPitch, maxPitch: cl.maxPitch };
+      });
+      var sp = spans();
+      MM = window.CanvasMap.draw(el, {
+        durationTick: v.durationTick || 0, ticksPerBar: v.ticksPerBar || 1920,
+        tracks: [{ trackIndex: v.trackIndex, name: v.trackName, clips: clips }],
+      }, {
+        row: 66, hi: [v.trackIndex],
+        picks: sp ? [{ begin: sp.a, end: sp.b, color: 'rgba(26,115,232,.34)', stroke: '#1a73e8' }] : [],
+      });
+      S.boxes = sp ? { src: [MM.X(sp.a), MM.X(sp.b)] } : null;
+    }
+
+    function render() {
+      $('s1').value = S.s1; $('s2').value = S.s2; $('tol').value = S.tol; $('maxA').value = S.maxA;
+      var v = S.view;
+      if (v) {
+        var sp = spans();
+        var nNotes = 0;
+        (v.clips || []).forEach(function (cl) { nNotes += (cl.noteCount || (cl.notes || []).length); });
+        $('rangeInfo').textContent = '第 ' + S.s1 + '–' + S.s2 + ' 小节（第 ' + beatOf(sp.a) + '–' + beatOf(sp.b) +
+          ' 拍）· 这条轨 ' + (v.clips || []).length + ' 个片段 / ' + nNotes + ' 个音符';
+      }
+      draw();
+    }
+
+    /* ---------- 拖动：在图上拉区间 ---------- */
+    function pxOf(ev) { var r = $('mm').getBoundingClientRect(); return ev.clientX - r.left; }
+    function barAtPx(px) {
+      var v = S.view, g = MM && MM.geom, tick;
+      if (g && g.scale) tick = (px - (g.gutter || 0)) / g.scale + (g.t0 || 0);
+      else {
+        var cssW = $('mm').clientWidth || 580, pad = 8, w = Math.max(1, cssW - pad * 2);
+        var total = Math.max(v.durationTick || 0, v.clipEnd || 0, 1920);
+        tick = (px - pad) / w * total;
+      }
+      var total2 = Math.max(v.durationTick || 0, v.clipEnd || 0, 1920);
+      tick = Math.max(0, Math.min(total2, tick));
+      return Math.max(1, Math.round(tick / (v.ticksPerBar || 1920) + 1));
+    }
+    function mmDown(ev) {
+      if (!S.view) return;
+      try { $('mm').setPointerCapture(ev.pointerId); } catch (e) { }
+      S.drag = { bar: barAtPx(pxOf(ev)) };
+      S.s1 = S.s2 = S.drag.bar;
+      render();
+    }
+    function mmMove(ev) {
+      if (!S.drag) return;
+      var bar = barAtPx(pxOf(ev));
+      S.s1 = Math.min(S.drag.bar, bar);
+      S.s2 = Math.max(S.drag.bar, bar);
+      render();
+    }
+    function mmUp() { if (!S.drag) return; S.drag = null; save(); render(); }
+
+    $('mm').addEventListener('pointerdown', mmDown);
+    $('mm').addEventListener('pointermove', mmMove);
+    $('mm').addEventListener('pointerup', mmUp);
+    $('mm').addEventListener('pointercancel', mmUp);
+    window.addEventListener('resize', draw);
+
+    ['s1', 's2'].forEach(function (id) {
+      var sync = function () {
+        var v = parseFloat($(id).value);
+        if (isNaN(v) || v < 1) return;
+        if (id === 's1') { S.s1 = v; if (S.s2 <= S.s1) S.s2 = S.s1 + 1; }
+        if (id === 's2') { S.s2 = v; if (S.s1 >= S.s2) S.s1 = Math.max(1, S.s2 - 1); }
+        save(); render();
+      };
+      $(id).addEventListener('input', sync);
+      $(id).addEventListener('change', sync);
+    });
+    var tolSync = function () {
+      var v = parseFloat($('tol').value);
+      S.tol = (isNaN(v) || v <= 0) ? 0.05 : v;
+      save();
+    };
+    $('tol').addEventListener('input', tolSync);
+    $('tol').addEventListener('change', tolSync);
+    var maxASync = function () {
+      var v = parseInt($('maxA').value, 10);
+      S.maxA = (isNaN(v) || v < 0) ? 0 : v;
+      save();
+    };
+    $('maxA').addEventListener('input', maxASync);
+    $('maxA').addEventListener('change', maxASync);
+    $('refresh').addEventListener('click', function () { boot(); });
+
+    /* ---------- 三步流程 ---------- */
+    $('p1').addEventListener('click', async function () {
+      if (S.busy) return;
+      busy(true);
+      $('p1stat').textContent = '保存中…';
+      say('① 保存工程…');
+      try {
+        var d = await postRun('project.save', { dryRun: '0' });
+        var pj = firstJSON(d);
+        var p = pj.savedPath || pj.projectPath || pj['工程文件路径'] || pj['已保存到'] || '';
+        if (!p) throw new Error('没拿到工程文件路径（' + (d.hint || '返回里没有路径') + '）');
+        S.path = p;
+        $('p1stat').textContent = '已保存';
+        $('undo').disabled = false;
+        $('ustat').textContent = '最近一次备份';
+        busy(false);
+        say('① 已保存。工程文件：' + S.path + '\n\n下一步：点 ② 预览或执行。', 'ok');
+        $('p2stat').textContent = '可以执行了';
+      } catch (e) {
+        $('p1stat').textContent = '失败';
+        busy(false);
+        say('① 保存失败：' + e.message, 'bad');
+      }
+    });
+
+    async function apply(dry) {
+      if (S.busy || !S.path) return;
+      busy(true);
+      $('p2stat').textContent = dry ? '预览中…' : '执行中…';
+      say((dry ? '② 预览…' : '② 执行…（会先备份原文件）'));
+      try {
+        var d = await postRun('pitch.toanchors', {
+          path: S.path, beginBar: String(S.s1), endBar: String(S.s2),
+          tol: String(S.tol), maxAnchors: String(S.maxA), extremes: $('extremes').checked ? '1' : '0',
+          dryRun: dry ? '1' : '0',
+        });
+        var r = firstJSON(d);
+        var L = [];
+        ['干跑', '工程文件', '片段', '区间', '曲线来源', '采样点', '锚点数', '写回分段', '覆盖音符', '最大误差(半音)', '实际容差(半音)', '备份', '提示'].forEach(function (k) {
+          if (r[k] !== undefined && r[k] !== '' && r[k] !== null) L.push(k + '：' + r[k]);
+        });
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        if (!d.ok) { say(L.join('\n') + '\n\n失败：' + (d.hint || ''), 'bad'); $('p2stat').textContent = '失败'; busy(false); return; }
+        say(L.join('\n'), 'ok');
+        $('p2stat').textContent = dry ? '预览完成（没写）' : '已写入';
+        if (!dry) {
+          $('undo').disabled = false;
+          $('ustat').textContent = '有备份';
+          say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+          var od = await postRun('project.open', { path: S.path, dryRun: '0' });
+          if (!od.ok) say(L.join('\n') + '\n\n重新加载**失败**：' + (od.hint || ''), 'bad');
+          else say(L.join('\n') + '\n\n已重新加载。', 'ok');
+        }
+      } catch (e) {
+        say((dry ? '② 预览失败：' : '② 失败：') + e.message, 'bad');
+        $('p2stat').textContent = '失败';
+      } finally {
+        busy(false);
+      }
+    }
+    $('prev').addEventListener('click', function () { apply(true); });
+    $('p2').addEventListener('click', function () { apply(false); });
+
+    $('undo').addEventListener('click', async function () {
+      if (S.busy) return;
+      busy(true);
+      $('ustat').textContent = '恢复中…';
+      try {
+        var d = await postRun('project.restore', { dryRun: '0' });
+        var r = firstJSON(d);
+        var L = ['已把备份换回工程文件', '用哪份：' + r['用哪份备份']];
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        say(L.join('\n'), 'ok');
+        $('ustat').textContent = '已恢复';
+      } catch (e) {
+        say('恢复失败：' + e.message, 'bad');
+        $('ustat').textContent = '失败';
+      } finally {
+        busy(false);
+      }
+    });
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      try {
+        var d = await postRun('xcopy.view', {});
+        var v = firstJSON(d);
+        if (!d.ok || !v) throw new Error(d.hint || '拿不到当前轨/片段');
+        S.view = v;
+        $('dot').className = 'dot on';
+        $('stat').textContent = '轨 ' + (v.trackIndex || 0) + (v.trackName ? '「' + v.trackName + '」' : '') +
+          ' · ' + ((v.clips || []).length) + ' 个片段 · ' + (v.ticksPerBar || 1920) + ' tick/小节';
+        render();
+      } catch (e) {
+        $('stat').textContent = /bridge not reachable|not running|exit 3/i.test(String(e.message))
+          ? 'ACE 没开（或桥没起来）—— 先打开 ACE Studio，再点「刷新」'
+          : ('读取失败：' + e.message);
+      }
+    }
+
+    load();
+    boot();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>查找</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:4px 10px;font:inherit;font-size:12px;cursor:pointer;flex:0 0 auto}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px}
+    /* 独立窗口比主面板宽 ⇒ 面板卡片可以宽一点，缩略图预览才看得清 */
+    .wrap .findpanel{max-width:none;margin:0}
+    .sub{font-size:12px;color:#9aa0aa;margin-left:8px}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>查找</h1>
+    <span class="sub">检索音符与参数属性，命中项在缩略图上标记</span>
+    <span class="stat"><span class="dot" id="fdot"></span><span id="fstat">读取中…</span></span>
+    <span class="sp"></span>
+  </div>
+
+  <div class="wrap">
+    <div id="fphost"></div>
+  </div>
+
+  <script src="canvasmap.js"></script>
+  <script>
+  /* 兼容层：find.js 里写的是 MinimapPanel.draw/fetch（原来是 SVG 版）——
+     现在统一成 canvas（canvasmap.js），这里把它适配过去，find.js 一行都不用改。 */
+  window.MinimapPanel = {
+    curTrack: null,   // 当前编辑器所在的轨（用来在缩略图上高亮）
+    fetch: async function (notes) {
+      var d = await window.postRun('view.minimap', { notes: String(notes || 200) });
+      var j = (d.calls && d.calls[0] && d.calls[0].json) || null;
+      if (!d.ok || !j) throw new Error(d.hint || '拿不到工程缩略图');
+      // 顺手问一次当前轨（xcopy.view 便宜，返回 trackIndex）——缩略图上要标出"当前轨"
+      try {
+        var vd = await window.postRun('xcopy.view', {});
+        var vj = (vd.calls && vd.calls[0] && vd.calls[0].json) || null;
+        if (vd.ok && vj && vj.trackIndex != null) window.MinimapPanel.curTrack = vj.trackIndex;
+      } catch (e) { }
+      return j;
+    },
+    draw: function (el, data, opt) {
+      if (!el || !data || !window.CanvasMap) return null;
+      opt = opt || {};
+      // 容器转成 canvas（find.js 给的是 div）
+      var cv = el.querySelector('canvas');
+      if (!cv) { el.innerHTML = ''; cv = document.createElement('canvas'); el.appendChild(cv); }
+      cv.style.width = '100%'; cv.style.display = 'block';
+      el.style.position = 'relative';
+      var picks = (opt.marks || []).map(function (m) {
+        return { begin: m.tick, end: m.tick + 12, color: m.cur ? 'rgba(255,209,102,.35)' : 'rgba(26,115,232,.18)',
+          stroke: m.cur ? '#ffd166' : '#1a73e8' };
+      });
+      return window.CanvasMap.draw(cv, data, { picks: picks, height: 200,
+        hi: (window.MinimapPanel.curTrack != null) ? [window.MinimapPanel.curTrack] : [] });
+    },
+  };
+</script>
+<script src="find.js"></script>
+  <script>
+    /* 这个独立窗口只用到 `find.js` 里的 FindPanel，所以**不加载 app.js**（那是整个主面板）。
+       但 FindPanel 与 MinimapPanel 都依赖页面上的 `postRun` ⇒ 在这里给它一个**最小替身**
+       （行为逐字一致：非 2xx 抛错）。`pushLog` / `renderRunHTML` 主面板才有，这里不给
+       ⇒ FindPanel 那两处**什么都不画**（它不会为了这个另造一套 UI）。 */
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+
+    async function postRun(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 保持 null，用 HTTP 状态报错 */ }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      return data;
+    }
+    window.postRun = postRun;   // FindPanel / MinimapPanel 都从 window 上取
+
+    async function status() {
+      var dot = $('fdot'), txt = $('fstat');
+      try {
+        var d = await (await fetch('/api/selfcheck', { cache: 'no-store' })).json();
+        if (!d.online) throw new Error('offline');
+        dot.className = 'dot on';
+        txt.textContent = [(d.version && d.version.forAce) || '', (d.project && d.project.projectName) || '未命名']
+          .filter(Boolean).join(' · ');
+      } catch (e) {
+        dot.className = 'dot'; txt.textContent = '未连接';
+      }
+    }
+  </script>
+
+  <script>
+    // 挂面板：先把工具清单要回来（属性/参数下拉要有东西），再 html() + bind()
+    (async function () {
+      try {
+        await window.FindPanel.mount($('fphost'));
+      } catch (e) {
+        $('fphost').innerHTML = '<div class="hint bad">面板挂载失败：' + (e && e.message ? e.message : e) + '</div>';
+      }
+      status();
+      setInterval(status, 15000);
+    })();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>

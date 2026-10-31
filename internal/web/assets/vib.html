@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>复制颤音模板</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;flex:0 0 auto}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px}
+    .warn{margin:0 0 10px;padding:8px 10px;border:1px solid var(--warn,#d9a441);border-left-width:4px;
+      border-radius:6px;background:rgba(217,164,65,.12);color:#ffd89a;font-size:12.5px}
+    .step{display:flex;align-items:center;gap:8px;margin:8px 0}
+    .step b{flex:0 0 auto;font-weight:500;color:var(--ok,#5ebd7a)}
+    .msg{color:var(--dim,#9498a0);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .box{margin:6px 0;padding:8px 10px;border:1px solid var(--line,#3f434a);border-radius:6px;
+      background:var(--inset,#242830);font:12px/1.6 ui-monospace,Consolas,monospace;color:var(--fg,#d6dae0);
+      white-space:pre-wrap;word-break:break-word;min-height:34px;max-height:30vh;overflow:auto}
+    .box.none{color:var(--dim,#9498a0)}
+    .out{margin-top:10px;white-space:pre-wrap;word-break:break-word;background:var(--inset,#242830);
+      border:1px solid var(--line,#3f434a);border-radius:6px;padding:8px 10px;font:12px/1.55 ui-monospace,Consolas,monospace;
+      color:var(--dim,#9498a0);min-height:70px;max-height:38vh;overflow:auto}
+    .out.ok{color:var(--ok,#5ebd7a)}
+    .out.bad{color:var(--bad,#e06c75)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>复制颤音模板</h1>
+    <span class="stat"><span class="dot" id="dot"></span><span id="stat">读取中…</span></span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <div class="warn">颤音属性在**工程文件**里：先在 ACE 里选**一个**音符当模板，再批量选目标。
+      顺序 ① 保存预设 → ② 保存（批量选之后）→ ③ 操作（改 .acep → 自动重新加载）；执行前自动备份。
+      ⚠️ 实测（2026-10-15）：③ 让 ACE 重开工程时**会把 ACE 的撤销栈整个清掉**（6 条 → 0 条）⇒ 之后 Ctrl+Z 回不到以前，
+      **还原只能靠 ↺ 恢复备份**。</div>
+
+    <div class="step"><b>①</b>
+      <button class="btn" id="p1" type="button">保存预设</button>
+      <span class="msg" id="p1stat">在 ACE 里选中 1 个音符再点</span>
+    </div>
+    <div class="box none" id="tplbox">模板：还没保存预设。</div>
+
+    <div class="step"><b>②</b>
+      <button class="btn" id="p2" type="button" disabled>保存</button>
+      <span class="msg" id="p2stat">先做第 ① 步</span>
+    </div>
+    <div class="box none" id="dstbox">目标：还没读。</div>
+
+    <div class="step"><b>③</b>
+      <button class="btn" id="prev" type="button" disabled>预览（只看会改什么，不写文件）</button>
+      <button class="btn" id="p3" type="button" disabled>操作</button>
+      <span class="msg" id="p3stat">先做第 ① ② 步</span>
+    </div>
+    <div class="step"><b>↺</b>
+      <button class="btn" id="undo" type="button" disabled>恢复备份</button>
+      <span class="msg" id="ustat">还没有备份</span>
+    </div>
+    <div class="msg" id="ppath"></div>
+
+    <div class="out" id="out">还没开始。</div>
+  </div>
+
+  <script>
+    /* 复制颤音模板：把**一个**音符的 `notes[].vibrato` 复制到**一批**音符上。
+       文件路线（颤音不是 CLI 参数，只在 .acep 里）：
+         ① 保存预设 = 保存工程 → 读路径 → vibrato.read（single，显示基本信息+颤音参数）→ selection.clear（清除选中）
+         ② 保存     = 保存工程 → 读路径 → vibrato.read（这一批 = 目标）
+         ③ 操作     = vibrato.apply（先备份再原地替换）→ project.open 重新加载
+       后悔药：project.restore（用最近的备份换回来）+ project.open。 */
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+    var S = { busy: false, path: '', backup: '', tpl: '', tplLyric: '', targets: [] };
+
+    async function postRun(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 保持 null */ }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      return data;
+    }
+    window.postRun = postRun;
+    function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
+
+    function say(text, cls) {
+      var el = $('out');
+      el.className = 'out' + (cls ? ' ' + cls : '');
+      el.textContent = text;
+    }
+    function busy(on) {
+      S.busy = on;
+      $('p1').disabled = on;
+      $('p2').disabled = on || !S.path;
+      $('prev').disabled = on || !S.path || !S.tpl || !S.targets.length;
+      $('p3').disabled = on || !S.path || !S.tpl || !S.targets.length;
+      $('undo').disabled = on || !S.backup;
+      $('refresh').disabled = on;
+    }
+    function noteLine(n) {
+      // ⚠️ 单位口径（用户 2026-10-14）：对外一律「拍」（Go 侧给的字段名就是「…（拍）」）
+      return (n['歌词'] || '—') + ' · 音高 ' + n['音高'] + ' · 第 ' + n['片段内位置（拍）'] + ' 拍' +
+        '（时长 ' + n['时长（拍）'] + ' 拍）';
+    }
+
+    /* ① 保存预设：读一个音符 + 显示 + 清除选中 */
+    $('p1').addEventListener('click', async function () {
+      if (S.busy) return;
+      busy(true);
+      $('p1stat').textContent = '保存中…';
+      say('① 保存工程 → 读选中的那个音符…');
+      try {
+        var d = await postRun('project.save', {});
+        var p = firstJSON(d).savedPath || '';
+        var pd = await postRun('project.path', {});
+        S.path = p || firstJSON(pd)['工程文件路径'] || '';
+        $('ppath').textContent = S.path ? ('工程文件：' + S.path) : '';
+        if (!S.path) {
+          $('p1stat').textContent = '没有路径';
+          say('① 没拿到路径：这份工程**还没保存过**（临时工程）。\n' +
+            '请你在 ACE 里自己**保存 / 另存为**一个工程包（存到哪由你定），存好之后再点一次 ①。', 'bad');
+          return;
+        }
+        var rd = await postRun('vibrato.read', { path: S.path, single: '1' });
+        if (!rd.ok) { $('p1stat').textContent = '失败'; say('① 失败：' + (rd.hint || ''), 'bad'); return; }
+        var r = firstJSON(rd);
+        var list = r['音符信息'] || [];
+        if (!list.length) { $('p1stat').textContent = '失败'; say('① 失败：一个音符都没读到', 'bad'); return; }
+        S.tpl = list[0]['音符'];
+        S.tplLyric = list[0]['歌词'] || '—';
+        var vib = (r['颤音参数'] || [])[0] || '（没读到颤音）';
+        var noVib = vib.indexOf('没有颤音') >= 0;
+        $('tplbox').className = 'box';
+        $('tplbox').textContent = '模板音符（' + S.tpl + '）\n' + noteLine(list[0]) + '\n颤音：' + vib.split('：').slice(1).join('：');
+        // 「清除选中」（用户流程里的第三步）：不让模板音符留在选区里
+        var cd = await postRun('selection.clear', {});
+        var cleared = cd.ok ? '已清除 ACE 的选中' : ('清除选中**失败**：' + (cd.hint || ''));
+        $('p1stat').textContent = noVib ? '这个音符没有颤音' : '已保存预设';
+        $('p2stat').textContent = '在 ACE 里批量选之后点这里';
+        say('① 模板 = ' + S.tplLyric + '（音高 ' + list[0]['音高'] + '）\n颤音：' +
+          vib + '\n' + cleared +
+          (noVib
+            ? '\n\n⚠️ 这个音符**没有颤音** —— 先在 ACE 里给它画/调出颤音、「保存工程」，再点一次 ①。' +
+              '（③ 操作会拒绝：没有颤音的音符连 `vibrato` 键都没有，本工具不猜成「把目标的颤音清掉」）'
+            : '\n\n下一步：去 ACE 里**批量选中**要套用的音符 → 点 ② 保存。'), noVib ? 'bad' : 'ok');
+      } catch (e) {
+        $('p1stat').textContent = '失败';
+        say('① 失败：' + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    });
+
+    /* ② 保存：把当前批量选区读成目标（顺便把工程落盘） */
+    $('p2').addEventListener('click', async function () {
+      if (S.busy) return;
+      busy(true);
+      $('p2stat').textContent = '读取中…';
+      say('② 保存工程 → 读这一批选中的音符…');
+      try {
+        var d = await postRun('project.save', {});
+        var p = firstJSON(d).savedPath || S.path;
+        var pd = await postRun('project.path', {});
+        S.path = p || firstJSON(pd)['工程文件路径'] || S.path;
+        var rd = await postRun('vibrato.read', { path: S.path, single: '0' });
+        if (!rd.ok) { $('p2stat').textContent = '失败'; say('② 失败：' + (rd.hint || ''), 'bad'); return; }
+        var r = firstJSON(rd);
+        var list = r['音符信息'] || [];
+        S.targets = list.map(function (n) { return n['音符']; });
+        $('dstbox').className = 'box';
+        $('dstbox').textContent = '目标 ' + list.length + ' 个音符：\n' +
+          list.slice(0, 12).map(function (n, i) { return (i + 1) + '. ' + noteLine(n); }).join('\n') +
+          (list.length > 12 ? ('\n… 还有 ' + (list.length - 12) + ' 个') : '');
+        $('p2stat').textContent = '目标 ' + list.length + ' 个';
+        $('p3stat').textContent = S.tpl && list.length ? '可以操作了' : '先做第 ① ② 步';
+        say('② 目标 ' + list.length + ' 个音符（' + (r['范围'] || '') + '）\n' +
+          '模板 = ' + (S.tplLyric || '—') + '\n\n下一步：点 ③ 操作（会先备份工程文件，再原地改写）。', 'ok');
+      } catch (e) {
+        $('p2stat').textContent = '失败';
+        say('② 失败：' + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    });
+
+    /* ③ 操作：「预览」只算要改什么（不写、不备份）；「操作」才真写（备份 → 原地替换 → 让 ACE 重新打开） */
+    async function applyVib(dry) {
+      if (S.busy) return;
+      if (!S.tpl || !S.targets.length) return;
+      busy(true);
+      $('p3stat').textContent = dry ? '预览中…' : '写文件中…';
+      say(dry ? '③ 预览：只看会改什么（不写文件、不备份）…' : '③ 改工程文件…（先备份，再原地替换）');
+      try {
+        var d = await postRun('vibrato.apply', {
+          path: S.path, template: S.tpl, targets: S.targets.join(','),
+          dryRun: dry ? '1' : '0',
+        });
+        if (!d.ok) { $('p3stat').textContent = '失败'; say((dry ? '③ 预览失败：' : '③ 失败：') + (d.hint || ''), 'bad'); return; }
+        var r = firstJSON(d);
+        var L = [dry ? '③ 预览（没有写任何字节）' : '③ 已改工程文件'];
+        if (r['片段']) L.push(r['片段']);
+        if (r['源']) L.push(r['源']);
+        if (r['目标']) L.push(r['目标']);
+        L.push('音符颤音：' + ((r['音符颤音'] || {}).结果 || ''));
+        if (r['备份']) { L.push('备份：' + r['备份']); S.backup = r['备份']; $('ustat').textContent = '可恢复：' + r['备份']; }
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        $('p3stat').textContent = dry ? '预览完成（没写）' : '已写入';
+        if (dry) { say(L.join('\n'), ''); return; } // 预览没写文件 ⇒ 不重开工程
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+        var od = await postRun('project.open', { path: S.path });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : ('\n\n重新加载**失败**：' + (od.hint || '') +
+          '\n（手动在 ACE 里重新打开这份工程）')), od.ok ? 'ok' : 'bad');
+      } catch (e) {
+        $('p3stat').textContent = '失败';
+        say((dry ? '③ 预览失败：' : '③ 失败：') + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    }
+    $('prev').addEventListener('click', function () { applyVib(true); });
+    $('p3').addEventListener('click', function () { applyVib(false); });
+
+    /* ↺ 恢复备份（同一份流程的后悔药） */
+    $('undo').addEventListener('click', async function () {
+      if (S.busy || !S.path) return;
+      if (!confirm('把最近一次备份换回工程文件？（换之前会给当前文件也留一份备份）')) return;
+      busy(true);
+      $('ustat').textContent = '恢复中…';
+      try {
+        var d = await postRun('project.restore', { path: S.path, backup: S.backup || '' });
+        if (!d.ok) { $('ustat').textContent = '失败'; say('恢复失败：' + (d.hint || ''), 'bad'); return; }
+        var r = firstJSON(d);
+        var L = ['已把备份换回工程文件', '用哪份：' + r['用哪份备份'] + '（' + r['备份时间'] + '）'];
+        if (r['换回去之前又留的一份']) L.push('换之前的当前文件也留了一份：' + r['换回去之前又留的一份']);
+        (r['自检'] || []).forEach(function (c) { L.push('自检：' + c); });
+        $('ustat').textContent = '已恢复';
+        say(L.join('\n') + '\n\n正在让 ACE 重新打开工程…');
+        var od = await postRun('project.open', { path: S.path });
+        say(L.join('\n') + (od.ok ? '\n\n已重新加载。' : ('\n\n重新加载失败：' + (od.hint || ''))), od.ok ? 'ok' : 'bad');
+      } catch (e) {
+        $('ustat').textContent = '失败';
+        say('恢复失败：' + e.message, 'bad');
+      } finally {
+        busy(false);
+      }
+    });
+
+    $('refresh').addEventListener('click', function () { boot(); });
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      try {
+        var d = await postRun('project.path', {});
+        var j = firstJSON(d);
+        S.path = j['工程文件路径'] || S.path;
+        $('ppath').textContent = S.path ? ('工程文件：' + S.path) : '这份工程还没保存过（临时工程）—— 先在 ACE 里保存';
+        $('stat').textContent = S.path
+          ? ((j['工程名'] || '') + (j['未保存改动'] ? ' · ' + j['未保存改动'] : ''))
+          : '临时工程（没有文件路径）';
+        $('dot').className = 'dot' + (S.path ? ' on' : '');
+        busy(false);
+      } catch (e) {
+        $('stat').textContent = '读取失败：' + e.message;
+        $('dot').className = 'dot';
+      }
+    }
+    boot();
+  </script>
+  <script src="ontop.js"></script>
+</body>
+
+</html>
