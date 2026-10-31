@@ -697,9 +697,11 @@
         var j = await (await fetch('/api/update' + (force ? '?force=1' : ''), { cache: 'no-store' })).json();
         if (j.error) { el.textContent = '检查失败：' + j.error; return; }
         if (j.newer) {
-          el.innerHTML = '有新版本 <b>' + j.latest + '</b>（当前 ' + j.current + '）· <a href="' + j.url + '" target="_blank">去下载</a>';
+          el.innerHTML = '有新版本 <b>' + j.latest + '</b>（当前 ' + j.current + ' · 来源 ' + (j.source || '?') + '）· ' +
+            '<a href="' + j.url + '" target="_blank">去下载</a>';
         } else {
-          el.textContent = '已是最新（' + j.current + (j.latest ? ' · 远端 ' + j.latest : '') + '）';
+          el.textContent = '已是最新（' + j.current + (j.latest ? ' · 远端 ' + j.latest : '') +
+            (j.source ? ' · 来源 ' + j.source : '') + (j.checkedAt ? ' · ' + j.checkedAt : '') + '）';
         }
       } catch (e) { el.textContent = '检查失败：' + e.message; }
     }

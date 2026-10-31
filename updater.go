@@ -1,12 +1,19 @@
 package main
 
-// 更新检测：向 GitHub Releases 问最新 tag，按语义版本比较，结果缓存在内存里。
-// 不自动下载、不自动替换 exe —— 只告诉用户"有新版本"和下载页地址。
+// 更新检测：多源回退，确保国内/国外都能查到。
+//
+//	① api.github.com 的 releases/latest（国外最快，国内可能被墙）
+//	② jsDelivr 上的 VERSION 文件（国内可达，CDN 缓存）
+//	③ gh-proxy 转发的 raw.githubusercontent（代理，国内多数可用）
+//	④ raw.githubusercontent 直连（保底）
+//
+// 每次启动都会强制查一次（不走缓存）；页面手动「检查更新」也强制。
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,7 +21,6 @@ import (
 	"time"
 )
 
-// GitHub 仓库（改这里就能换发布源）。
 const updateRepo = "Akunda123/ACETool"
 
 type updateInfo struct {
@@ -22,6 +28,7 @@ type updateInfo struct {
 	Latest    string `json:"latest,omitempty"`
 	Newer     bool   `json:"newer"`
 	URL       string `json:"url,omitempty"`
+	Source    string `json:"source,omitempty"`
 	CheckedAt string `json:"checkedAt,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
@@ -32,10 +39,8 @@ var (
 	updateCacheAt time.Time
 )
 
-// semverLess 比较 x.y.z（允许 v 前缀、后缀 -beta 会被忽略）。
 func semverLess(a, b string) bool {
-	pa := parseSemver(a)
-	pb := parseSemver(b)
+	pa, pb := parseSemver(a), parseSemver(b)
 	for i := 0; i < 3; i++ {
 		if pa[i] != pb[i] {
 			return pa[i] < pb[i]
@@ -46,7 +51,7 @@ func semverLess(a, b string) bool {
 
 func parseSemver(s string) [3]int {
 	var out [3]int
-	s = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(s), "v"))
+	s = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(strings.TrimSpace(s)), "v"))
 	if i := strings.IndexAny(s, "-+"); i >= 0 {
 		s = s[:i]
 	}
@@ -54,67 +59,123 @@ func parseSemver(s string) [3]int {
 		if i >= 3 {
 			break
 		}
-		n, _ := strconv.Atoi(part)
+		n, _ := strconv.Atoi(strings.TrimSpace(part))
 		out[i] = n
 	}
 	return out
 }
 
-// checkUpdate 问一次 GitHub；10 分钟内重复调用直接用缓存。
-func checkUpdate(ctx context.Context, force bool) *updateInfo {
-	updateMu.Lock()
-	defer updateMu.Unlock()
-	if !force && updateCache != nil && time.Since(updateCacheAt) < 10*time.Minute {
-		return updateCache
-	}
-	info := &updateInfo{Current: appVersion}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"https://api.github.com/repos/"+updateRepo+"/releases/latest", nil)
+// getText 带超时地取一个 URL 的正文（限 64 KB，够读版本号）。
+func getText(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		info.Error = err.Error()
-		return info
+		return "", err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "ACETool/"+appVersion)
-	client := &http.Client{Timeout: 8 * time.Second}
+	req.Header.Set("Accept", "*/*")
+	client := &http.Client{Timeout: 6 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		info.Error = "连不上 GitHub：" + err.Error()
-		updateCache, updateCacheAt = info, time.Now()
-		return info
+		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == 404 {
-		info.Error = "仓库还没有发布（404）"
-		updateCache, updateCacheAt = info, time.Now()
-		return info
-	}
 	if resp.StatusCode != 200 {
-		info.Error = fmt.Sprintf("GitHub 返回 %d", resp.StatusCode)
-		updateCache, updateCacheAt = info, time.Now()
-		return info
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	var rel struct {
-		TagName string `json:"tag_name"`
-		HTMLURL string `json:"html_url"`
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return "", err
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		info.Error = "发布信息解不开：" + err.Error()
-		updateCache, updateCacheAt = info, time.Now()
-		return info
+	return string(b), nil
+}
+
+// checkUpdate 逐个源尝试；force=false 且 10 分钟内有结果则复用。
+func checkUpdate(ctx context.Context, force bool) *updateInfo {
+	updateMu.Lock()
+	if !force && updateCache != nil && time.Since(updateCacheAt) < 10*time.Minute {
+		c := updateCache
+		updateMu.Unlock()
+		return c
 	}
-	info.Latest = strings.TrimSpace(rel.TagName)
-	info.URL = rel.HTMLURL
-	if info.URL == "" {
-		info.URL = "https://github.com/" + updateRepo + "/releases"
+	updateMu.Unlock()
+
+	info := &updateInfo{Current: appVersion}
+	var errs []string
+	found := ""
+
+	// ① GitHub Releases API
+	if txt, err := getText(ctx, "https://api.github.com/repos/"+updateRepo+"/releases/latest"); err == nil {
+		var rel struct {
+			TagName string `json:"tag_name"`
+			HTMLURL string `json:"html_url"`
+		}
+		if json.Unmarshal([]byte(txt), &rel) == nil && strings.TrimSpace(rel.TagName) != "" {
+			found = strings.TrimSpace(rel.TagName)
+			info.Source = "GitHub API"
+			info.URL = rel.HTMLURL
+		} else {
+			errs = append(errs, "GitHub API：返回里没有 tag_name")
+		}
+	} else {
+		errs = append(errs, "GitHub API："+err.Error())
 	}
-	info.Newer = info.Latest != "" && semverLess(appVersion, info.Latest)
-	info.CheckedAt = time.Now().Format("2006-01-02 15:04")
+
+	// ② jsDelivr 上的 VERSION
+	if found == "" {
+		if txt, err := getText(ctx, "https://cdn.jsdelivr.net/gh/"+updateRepo+"@main/VERSION"); err == nil {
+			v := strings.TrimSpace(strings.SplitN(txt, "\n", 2)[0])
+			if v != "" {
+				found = v
+				info.Source = "jsDelivr"
+			}
+		} else {
+			errs = append(errs, "jsDelivr："+err.Error())
+		}
+	}
+
+	// ③ gh-proxy 转发的 raw
+	if found == "" {
+		if txt, err := getText(ctx, "https://gh-proxy.com/https://raw.githubusercontent.com/"+updateRepo+"/main/VERSION"); err == nil {
+			v := strings.TrimSpace(strings.SplitN(txt, "\n", 2)[0])
+			if v != "" {
+				found = v
+				info.Source = "gh-proxy"
+			}
+		} else {
+			errs = append(errs, "gh-proxy："+err.Error())
+		}
+	}
+
+	// ④ raw.githubusercontent 直连
+	if found == "" {
+		if txt, err := getText(ctx, "https://raw.githubusercontent.com/"+updateRepo+"/main/VERSION"); err == nil {
+			v := strings.TrimSpace(strings.SplitN(txt, "\n", 2)[0])
+			if v != "" {
+				found = v
+				info.Source = "raw.githubusercontent"
+			}
+		} else {
+			errs = append(errs, "raw："+err.Error())
+		}
+	}
+
+	if found != "" {
+		info.Latest = found
+		if info.URL == "" {
+			info.URL = "https://github.com/" + updateRepo + "/releases"
+		}
+		info.Newer = semverLess(appVersion, found)
+		info.CheckedAt = time.Now().Format("2006-01-02 15:04")
+	} else {
+		info.Error = strings.Join(errs, "；")
+	}
+
+	updateMu.Lock()
 	updateCache, updateCacheAt = info, time.Now()
+	updateMu.Unlock()
 	return info
 }
 
-// cachedUpdateInfo 给页面用（不触发网络）。
 func cachedUpdateInfo() *updateInfo {
 	updateMu.Lock()
 	defer updateMu.Unlock()
