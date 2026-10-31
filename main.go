@@ -115,10 +115,26 @@ func main() {
 	rail.SetLayout(cfg.LayoutOrder, cfg.LayoutHidden, cfg.LayoutShown)
 	// 启动后异步查一次更新（不阻塞启动、失败只记在 about 页）
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if i := checkUpdate(ctx, true); i != nil && i.Newer {
-			log.Printf("有新版本：%s（当前 %s）", i.Latest, i.Current)
+		// 每次启动都查一次；网络没起来时再试两轮（20s / 60s 后）。
+		for attempt := 0; attempt < 3; attempt++ {
+			if attempt > 0 {
+				time.Sleep(time.Duration(attempt*20) * time.Second)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			i := checkUpdate(ctx, true)
+			cancel()
+			if i == nil {
+				continue
+			}
+			if i.Error == "" {
+				if i.Newer {
+					log.Printf("有新版本：%s（当前 %s，来源 %s）", i.Latest, i.Current, i.Source)
+				} else {
+					log.Printf("更新检测：已是最新 %s（来源 %s）", i.Current, i.Source)
+				}
+				return
+			}
+			log.Printf("更新检测第 %d 次失败：%s", attempt+1, i.Error)
 		}
 	}()
 	if *cliFlag != "" {
