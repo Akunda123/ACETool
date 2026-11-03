@@ -158,7 +158,8 @@
     }
 
     function openPanel(n, chip) {
-      touched = false;
+      // ⚠️ 不在这里复位 touched：面板里操作过之后，鼠标经过别的音符也不能让它变回“可自动关”。
+      // touched 只在 hidePanel()（显式关闭）里复位。
       cancelHide();
       CUR = n; PICK = {}; MSG = '';
       [].slice.call(document.querySelectorAll('.chip.active')).forEach(function (c) { c.classList.remove('active'); });
