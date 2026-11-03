@@ -128,8 +128,19 @@
       CUR = null; PICK = {}; MSG = '';
       [].slice.call(document.querySelectorAll('.chip.active')).forEach(function (c) { c.classList.remove('active'); });
     }
-    // 面板不自动关：只有「换到另一个音符 / 点面板外 / Esc / 刷新」才收
-    function cancelHide() { }
+    // 未修改 ⇒ 鼠标离开自动收（300ms，容错进面板）；已修改（有待提交）⇒ 不自动收
+    var lastX = -1, lastY = -1;
+    function dirty() { for (var k in PICK) { if (PICK.hasOwnProperty(k)) return true; } return false; }
+    function cancelHide() { clearTimeout(hideTimer); }
+    function scheduleHide() {
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () {
+        if (dirty()) return;                       // 改过还没应用：别关
+        var el = document.elementFromPoint(lastX, lastY);
+        if (el && el.closest && (el.closest('#panel') || el.closest('.chip'))) return;
+        hidePanel();
+      }, 300);
+    }
 
     /* 面板放在 chip 的**正下方**；下方放不下就放到 chip 上方；左右夹在 stage 内 */
     function placePanel(chip) {
@@ -238,11 +249,22 @@
           '<div class="zi">' + esc(n.lyric || '·') + '</div>' +
           '<div class="sub">' + esc(n.language || '') + ' · ' + n.pitch + '</div>';
         el.addEventListener('mouseenter', function () { openPanel(n, el); });
+        el.addEventListener('mouseleave', scheduleHide);
         box.appendChild(el);
       });
     }
 
 
+    $('panel').addEventListener('mouseenter', cancelHide);
+    $('panel').addEventListener('mouseleave', scheduleHide);
+    document.addEventListener('pointermove', function (ev) {
+      lastX = ev.clientX; lastY = ev.clientY;
+      if ($('panel').style.display !== 'block') return;
+      if (dirty()) { cancelHide(); return; }
+      var el = document.elementFromPoint(lastX, lastY);
+      if (el && el.closest && (el.closest('#panel') || el.closest('.chip'))) cancelHide();
+      else scheduleHide();
+    }, { passive: true });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hidePanel(); });
     document.addEventListener('pointerdown', function (ev) {
       if (!CUR) return;
