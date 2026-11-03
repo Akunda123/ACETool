@@ -28,7 +28,6 @@
       border-radius:6px;background:rgba(217,164,65,.12);color:#ffd89a;font-size:12.5px}
     .msg{color:var(--dim,#9498a0);font-size:12px}
 
-    /* 音符卡：上音素、下词 */
     .grid{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
     .note{position:relative;min-width:64px;padding:5px 7px 6px;border:1px solid var(--line,#3f434a);border-radius:8px;
       background:var(--inset,#242830);cursor:default;user-select:none}
@@ -42,16 +41,20 @@
     .note.ov .word{color:#ffd89a}
     .note .dotov{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--warn,#d9a441)}
 
-    /* hover 详细表 */
-    #pop{position:fixed;z-index:20;display:none;max-width:520px;padding:8px 10px;border:1px solid var(--line,#3f434a);
-      border-radius:8px;background:var(--panel,#2f333a);box-shadow:0 6px 22px rgba(0,0,0,.5);font-size:12px}
-    #pop h4{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--fg,#d6dae0)}
-    #pop table{border-collapse:collapse;width:100%}
-    #pop th,#pop td{padding:2px 8px 2px 0;text-align:left;vertical-align:top;white-space:nowrap}
-    #pop th{color:var(--dim,#9498a0);font-weight:500;border-bottom:1px solid var(--line,#3f434a)}
-    #pop td.mono{font-family:ui-monospace,Consolas,monospace}
-    #pop .dim{color:var(--dim,#9498a0)}
-    #pop .row2{margin-top:6px;color:var(--dim,#9498a0)}
+    /* hover 详细表（可停留、可改） */
+    #pop{position:fixed;z-index:20;display:none;width:min(560px,92vw);padding:10px 12px;border:1px solid var(--line,#3f434a);
+      border-radius:8px;background:var(--panel,#2f333a);box-shadow:0 8px 26px rgba(0,0,0,.55);font-size:12px}
+    #pop h4{margin:0 0 6px;font-size:12.5px;font-weight:600}
+    #pop .tok{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+    #pop .tok:last-child{border-bottom:0}
+    #pop .tok select{background:var(--inset,#242830);color:var(--fg,#d6dae0);border:1px solid var(--line,#3f434a);
+      border-radius:5px;padding:2px 6px;font:12px ui-monospace,Consolas,monospace;min-width:92px}
+    #pop .tok .meta{color:var(--dim,#9498a0);font-size:11.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #pop .acts{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+    #pop .warnline{color:#ffd89a;font-size:11.5px}
+    #pop .ok{color:#5ebd7a}
+    #pop .bad{color:var(--bad,#e06c75)}
+    #pop .mono{font-family:ui-monospace,Consolas,monospace}
   </style>
 </head>
 
@@ -64,8 +67,8 @@
   </div>
 
   <div class="wrap">
-    <div class="warn">只读预览：<b>上排是实际音素、下排是歌词</b>；鼠标停在音符上可看 IPA / 分类 / 发音方式 / 例词。
-      带琥珀色边框的音符是 <b>override</b>（音素被改写或冻结过）。</div>
+    <div class="warn">只读列表 + 可改音素：<b>上排音素、下排歌词</b>；鼠标停到音符上，浮层里每个音素是一个下拉框，
+      改完点「应用」（只写这一个音符）。琥珀色边框 = <b>override</b>（音素被改写或冻结过）。</div>
     <div class="grid" id="grid"></div>
     <div class="msg" id="scope"></div>
     <div class="msg" id="hint"></div>
@@ -76,6 +79,7 @@
   <script>
     var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
     var $ = function (id) { return document.getElementById(id); };
+    var closeTimer = null, currentNote = null;
 
     async function run(toolId, values) {
       var res = await fetch('/api/run', {
@@ -89,33 +93,71 @@
     function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
-    function tokenTable(toks, title) {
-      if (!toks || !toks.length) return '';
-      var rows = toks.map(function (t) {
-        return '<tr><td class="mono">' + esc(t.symbol) + '</td><td class="mono dim">' + esc(t.ipa || '—') +
-          '</td><td>' + esc(t.manner || '—') + '</td><td class="dim">' + esc(t.official || '—') +
-          '</td><td>' + esc(t.example || '—') + '</td></tr>';
-      }).join('');
-      return '<h4>' + esc(title) + '</h4><table><tr><th>符号</th><th>IPA</th><th>发音方式</th><th>官方分类</th><th>例词</th></tr>' + rows + '</table>';
+    function scheduleClose() {
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(function () { hidePop(); }, 260);
     }
+    function cancelClose() { clearTimeout(closeTimer); }
+    function hidePop() { $('pop').style.display = 'none'; currentNote = null; }
 
-    function showPop(note, ev) {
-      var n = note._data;
-      var html = tokenTable(n.tokens, (n.lyric || '（无歌词）') + ' · 实际音素');
-      if (n.defaults && n.defaults.length && n.defaults.map(function (t) { return t.symbol; }).join(' ') !==
-          n.tokens.map(function (t) { return t.symbol; }).join(' ')) {
-        html += '<div class="row2">' + tokenTable(n.defaults, '默认音素（引擎推导）').replace(/^<h4>[^<]*<\/h4>/, '') + '</div>';
-      }
-      if (n.isOverride) html += '<div class="row2">这个音符的音素是 override（被改写或冻结过）</div>';
-      if (n.timingKinds && n.timingKinds.length) html += '<div class="row2">时值类别：' + esc(n.timingKinds.join(' / ')) + '</div>';
+    function positionPop(ev) {
       var pop = $('pop');
-      pop.innerHTML = html;
-      pop.style.display = 'block';
       var r = pop.getBoundingClientRect();
       var x = Math.min(ev.clientX + 14, window.innerWidth - r.width - 8);
       var y = Math.min(ev.clientY + 14, window.innerHeight - r.height - 8);
       pop.style.left = Math.max(8, x) + 'px';
       pop.style.top = Math.max(8, y) + 'px';
+    }
+
+    function showPop(el, ev) {
+      cancelClose();
+      var n = el._data;
+      currentNote = n;
+      var pop = $('pop');
+      var toks = (n.tokens || []).map(function (t, i) {
+        var opts = (t.candidates && t.candidates.length ? t.candidates : [t.symbol]).map(function (c) {
+          return '<option value="' + esc(c) + '"' + (c === t.symbol ? ' selected' : '') + '>' + esc(c) + '</option>';
+        }).join('');
+        var meta = [t.ipa ? '/' + t.ipa + '/' : '', t.manner || '', t.official || '', t.example ? '如 ' + t.example : '']
+          .filter(Boolean).join(' · ');
+        return '<div class="tok"><select data-i="' + i + '">' + opts + '</select>' +
+          '<span class="meta">' + esc(meta || '—') + '</span></div>';
+      }).join('');
+      var froze = !n.isOverride;
+      pop.innerHTML =
+        '<h4>' + esc(n.lyric || '（无歌词）') + ' <span class="mono" style="color:#9498a0;font-weight:400">' +
+        esc((n.tokens || []).map(function (t) { return t.symbol; }).join(' ')) + '</span></h4>' +
+        toks +
+        '<div class="acts">' +
+        '<button class="btn" id="popApply" type="button">应用</button>' +
+        '<button class="btn" id="popReset" type="button">恢复默认</button>' +
+        '<span id="popMsg" class="msg"></span>' +
+        '</div>' +
+        (froze ? '<div class="warnline">这个音符还没被改写过；应用后发音会固定成 override（改歌词不再影响它）。</div>' : '');
+      pop.style.display = 'block';
+      positionPop(ev);
+
+      $('popApply').addEventListener('click', function () { applyNote(n, false); });
+      $('popReset').addEventListener('click', function () { applyNote(n, true); });
+    }
+
+    async function applyNote(n, reset) {
+      var msg = $('popMsg');
+      var sels = [].slice.call($('pop').querySelectorAll('select'));
+      var toks = reset ? [] : sels.map(function (s) { return s.value; });
+      msg.className = 'msg';
+      msg.textContent = '写入中…';
+      try {
+        var d = await run('phoneme.set', { noteUuid: n.noteUuid, phonemes: toks.join(' ') });
+        var r = firstJSON(d);
+        if (!d.ok) throw new Error(d.hint || '写入失败');
+        msg.className = 'msg ok';
+        msg.textContent = reset ? '已恢复默认' : ('已写入：' + (r.after || []).join(' '));
+        setTimeout(boot, 600);
+      } catch (e) {
+        msg.className = 'msg bad';
+        msg.textContent = '写入失败：' + e.message;
+      }
     }
 
     function render(rep) {
@@ -127,12 +169,11 @@
         el._data = n;
         var ph = (n.tokens || []).map(function (t) { return '<span class="ph" title="' + esc(t.manner || '') + '">' + esc(t.symbol) + '</span>'; }).join('');
         el.innerHTML = (n.isOverride ? '<i class="dotov" title="override"></i>' : '') +
-          '<div class="phons">' + (ph || '<span class="ph dim">—</span>') + '</div>' +
+          '<div class="phons">' + (ph || '<span class="ph">—</span>') + '</div>' +
           '<div class="word">' + esc(n.lyric || '·') + '</div>' +
           '<div class="sub">' + esc(n.language || '') + ' · ' + n.pitch + '</div>';
         el.addEventListener('mouseenter', function (ev) { showPop(el, ev); });
-        el.addEventListener('mousemove', function (ev) { showPop(el, ev); });
-        el.addEventListener('mouseleave', function () { $('pop').style.display = 'none'; });
+        el.addEventListener('mouseleave', scheduleClose);
         grid.appendChild(el);
       });
       var sc = rep.scope || {};
@@ -144,7 +185,7 @@
     async function boot() {
       $('stat').textContent = '读取中…';
       $('dot').className = 'dot';
-      $('pop').style.display = 'none';
+      hidePop();
       try {
         var d = await run('phoneme.view', {});
         var rep = firstJSON(d);
@@ -160,7 +201,9 @@
     }
 
     $('refresh').addEventListener('click', boot);
-    window.addEventListener('scroll', function () { $('pop').style.display = 'none'; }, true);
+    $('pop').addEventListener('mouseenter', cancelClose);
+    $('pop').addEventListener('mouseleave', scheduleClose);
+    window.addEventListener('scroll', hidePop, true);
     boot();
   </script>
 </body>

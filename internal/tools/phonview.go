@@ -14,7 +14,8 @@ import (
 )
 
 type phonTokenView struct {
-	Symbol   string `json:"symbol"`
+	Symbol     string   `json:"symbol"`
+	Candidates []string `json:"candidates,omitempty"` // 同语言的合法符号，同「发音方式」的排前面
 	IPA      string `json:"ipa,omitempty"`
 	Official string `json:"official,omitempty"`
 	Manner   string `json:"manner,omitempty"`
@@ -38,6 +39,7 @@ type phonViewReport struct {
 	Scope   noteScopeView  `json:"scope"`
 	Clip    string         `json:"clip,omitempty"`
 	Lang    string         `json:"language,omitempty"`
+	Symbols map[string][]string `json:"symbols,omitempty"` // 语言 → 合法符号（面板做下拉用）
 	Count   int            `json:"count"`
 	Notes   []phonNoteView `json:"notes"`
 	Missing []string       `json:"missing,omitempty"`
@@ -105,6 +107,7 @@ func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any
 
 	// ② 每种语言取一次 IPA 提示（音素 → IPA）；取不到就不带 IPA，不阻塞
 	hints := map[string]map[string]string{}
+	symbols := map[string][]string{}
 	langFull := map[string]string{"CHN": "Chinese", "JPN": "Japanese", "ENG": "English", "SPA": "Spanish", "KOR": "Korean"}
 	for code := range langSeen {
 		full := langFull[strings.ToUpper(code)]
@@ -113,20 +116,23 @@ func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any
 		}
 		var inv struct {
 			PhoneticsHints map[string]string `json:"phoneticsHints"`
+			Consonants     []string          `json:"consonants"`
+			Vowels         []string          `json:"vowels"`
 		}
 		if err := readJSON(ctx, rd, &inv, "phoneme", "inventory", "--language", full, "--json"); err == nil {
 			hints[strings.ToUpper(code)] = inv.PhoneticsHints
+			symbols[strings.ToUpper(code)] = append(append([]string{}, inv.Consonants...), inv.Vowels...)
 		}
 	}
 
 	langKey := map[string]string{"CHN": "zh", "JPN": "jp", "ENG": "eng", "SPA": "spa"}
 	describe := func(code string, syms []string) []phonTokenView {
-		lk := langKey[strings.ToUpper(code)]
+		up := strings.ToUpper(code)
+		lk := langKey[up]
 		out := make([]phonTokenView, 0, len(syms))
 		for _, s := range syms {
-			e := phoneme.Describe(lk, s, hints[strings.ToUpper(code)][s])
-			out = append(out, phonTokenView{Symbol: e.Symbol, IPA: e.IPA, Official: e.Official,
-				Manner: e.Manner, Example: e.Example})
+			e := phoneme.Describe(lk, s, hints[up][s])
+			out = append(out, phonTokenView{Symbol: e.Symbol, Candidates: rankCandidates(lk, symbols[up], hints[up], e.Manner, e.Symbol)})
 		}
 		return out
 	}
@@ -150,6 +156,7 @@ func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any
 			Timings:  row.timings,
 		})
 	}
+	rep.Symbols = symbols
 	rep.Count = len(rep.Notes)
 	if rep.Count == 0 {
 		rep.Note = "这批音符里没有读到音素（可能不是 Sing 片段）"
@@ -158,4 +165,20 @@ func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any
 		rep.Note = fmt.Sprintf("%d 个音符在 phoneme list 里没对应项（已跳过）", len(rep.Missing))
 	}
 	return rep, nil
+}
+
+// rankCandidates 给下拉框排候选：同「发音方式」的排前面，其余按原顺序接在后面。
+// 全部合法符号都保留 —— 用户可能就是要挑一个"不同类"的。
+func rankCandidates(lang string, all []string, hints map[string]string, curManner, curSym string) []string {
+	same := make([]string, 0, len(all))
+	other := make([]string, 0, len(all))
+	for _, sym := range all {
+		e := phoneme.Describe(lang, sym, hints[sym])
+		if e.Manner != "" && e.Manner == curManner && sym != curSym {
+			same = append(same, sym)
+		} else if sym != curSym {
+			other = append(other, sym)
+		}
+	}
+	return append(append([]string{curSym}, same...), other...)
 }
