@@ -105,6 +105,26 @@
     function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
+
+    function catOf(n) {
+      var key = (n.language === 'Chinese') ? 'zh' : (n.language === 'Japanese') ? 'jp'
+        : (n.language === 'English') ? 'eng' : 'spa';
+      return (window.__catalog && window.__catalog[key]) || {};
+    }
+    function metaOf(n, sym) {
+      var c = catOf(n)[sym];
+      if (!c) return { symbol: sym };
+      return { symbol: sym, ipa: c.ipa, official: c.official, manner: c.manner, example: c.example, candidates: (catOf(n)[sym] || {}).candidates };
+    }
+    function refreshCard(el, n) {
+      var ph = (n.tokens || []).map(function (t) {
+        return '<span class="ph" title="' + esc(t.manner || '') + '">' + esc(t.symbol) + '</span>';
+      }).join('');
+      var phons = el.querySelector('.phons');
+      if (phons) phons.innerHTML = ph || '<span class="ph">—</span>';
+      if (n.isOverride) el.classList.add('ov'); else el.classList.remove('ov');
+    }
+
     function hideMenu() { $('menu').style.display = 'none'; }
     function hidePop() { $('pop').style.display = 'none'; hideMenu(); currentNote = null; curNoteEl = null; }
 
@@ -213,9 +233,20 @@
         var d = await run('phoneme.set', { noteUuid: n.noteUuid, phonemes: toks.join(' ') });
         var r = firstJSON(d);
         if (!d.ok) throw new Error(d.hint || '写入失败');
-        msg.className = 'msg ok';
-        msg.textContent = reset ? '已恢复默认' : ('已写入：' + (r.after || []).join(' '));
-        setTimeout(boot, 700);
+        // 就地更新：保持面板打开（用户要接着改下一个音素）
+        var after = (r.after && r.after.length) ? r.after : (reset && r.before ? [] : toks);
+        var newToks = after.map(function (sym) { return metaOf(n, sym); });
+        if (reset) {
+          var dflt = (n.defaults || []).map(function (t) { return metaOf(n, t.symbol); });
+          if (dflt.length) newToks = dflt;
+        }
+        n.tokens = newToks;
+        n._picked = {};
+        n.isOverride = reset ? false : true;
+        if (curNoteEl) refreshCard(curNoteEl, n);
+        if (curNoteEl && currentNote === n) showPop(curNoteEl);
+        var m2 = $('popMsg');
+        if (m2) { m2.className = 'msg ok'; m2.textContent = reset ? '已恢复默认' : ('已写入：' + after.join(' ')); }
       } catch (e) {
         msg.className = 'msg bad';
         msg.textContent = '写入失败：' + e.message;
