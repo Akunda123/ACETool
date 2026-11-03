@@ -79,7 +79,7 @@
   <script>
     var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
     var $ = function (id) { return document.getElementById(id); };
-    var closeTimer = null, currentNote = null;
+    var closeTimer = null, currentNote = null, interacting = false;
 
     async function run(toolId, values) {
       var res = await fetch('/api/run', {
@@ -94,11 +94,17 @@
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
     function scheduleClose() {
+      if (interacting) return;
       clearTimeout(closeTimer);
-      closeTimer = setTimeout(function () { hidePop(); }, 260);
+      closeTimer = setTimeout(function () {
+        var pop = $('pop');
+        // 正在操作下拉：焦点还在浮层里（原生 select 展开时鼠标会短暂"离开"浮层）
+        if (interacting || pop.contains(document.activeElement)) return;
+        hidePop();
+      }, 400);
     }
     function cancelClose() { clearTimeout(closeTimer); }
-    function hidePop() { $('pop').style.display = 'none'; currentNote = null; }
+    function hidePop() { $('pop').style.display = 'none'; currentNote = null; interacting = false; }
 
     function positionPop(ev) {
       var pop = $('pop');
@@ -201,9 +207,30 @@
     }
 
     $('refresh').addEventListener('click', boot);
+    document.addEventListener('pointerdown', function (ev) {
+      var pop = $('pop');
+      if (pop.contains(ev.target)) return;
+      if (ev.target && ev.target.closest && ev.target.closest('.note')) return;
+      interacting = false;
+      hidePop();
+    }, true);
     $('pop').addEventListener('mouseenter', cancelClose);
+    $('pop').addEventListener('pointerdown', function () { interacting = true; cancelClose(); });
+    $('pop').addEventListener('focusin', function (ev) {
+      if (ev.target && ev.target.tagName === 'SELECT') { interacting = true; cancelClose(); }
+    });
+    $('pop').addEventListener('focusout', function (ev) {
+      if (ev.target && ev.target.tagName === 'SELECT') {
+        setTimeout(function () {
+          if (!$('pop').contains(document.activeElement)) { interacting = false; scheduleClose(); }
+        }, 0);
+      }
+    });
+    $('pop').addEventListener('mousedown', function (ev) {
+      if (ev.target && ev.target.tagName === 'SELECT') { interacting = true; cancelClose(); }
+    });
+    $('pop').addEventListener('change', function () { cancelClose(); });
     $('pop').addEventListener('mouseleave', scheduleClose);
-    window.addEventListener('scroll', hidePop, true);
     boot();
   </script>
 </body>
