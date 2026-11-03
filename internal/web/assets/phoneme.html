@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <title>音素预览</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:var(--bg,#282c33);color:var(--fg,#d6dae0);display:flex;flex-direction:column;overflow:hidden;
+      font:13px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    .bar{display:flex;align-items:center;gap:8px;padding:0 10px;height:34px;flex:0 0 auto;border-bottom:1px solid var(--line,#3f434a)}
+    .bar h1{font-size:13px;margin:0;font-weight:600}
+    .bar .sp{flex:1}
+    .stat{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim,#9498a0);min-width:0}
+    .stat span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--bad,#e06c75);flex:0 0 auto}
+    .dot.on{background:#5ebd7a}
+    .btn{border:1px solid var(--line,#3f434a);background:var(--panel,#2f333a);color:var(--fg,#d6dae0);border-radius:6px;
+      padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;flex:0 0 auto}
+    .btn:hover{border-color:var(--accent,#1a73e8)}
+    .btn:disabled{opacity:.45;cursor:default}
+    .wrap{flex:1 1 auto;overflow:auto;padding:10px;position:relative}
+    .warn{margin:0 0 10px;padding:8px 10px;border:1px solid var(--warn,#d9a441);border-left-width:4px;
+      border-radius:6px;background:rgba(217,164,65,.12);color:#ffd89a;font-size:12.5px}
+    .msg{color:var(--dim,#9498a0);font-size:12px}
+
+    /* 音符卡：上音素、下词 */
+    .grid{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+    .note{position:relative;min-width:64px;padding:5px 7px 6px;border:1px solid var(--line,#3f434a);border-radius:8px;
+      background:var(--inset,#242830);cursor:default;user-select:none}
+    .note:hover{border-color:var(--accent,#1a73e8);z-index:5}
+    .note .phons{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;margin-bottom:3px}
+    .note .ph{font:11.5px/1.3 ui-monospace,Consolas,monospace;color:#9fd2ff;background:rgba(26,115,232,.14);
+      border:1px solid rgba(26,115,232,.35);border-radius:4px;padding:0 4px}
+    .note .word{text-align:center;font-size:16px;line-height:1.2}
+    .note .sub{text-align:center;font-size:10.5px;color:var(--dim,#9498a0);margin-top:1px}
+    .note.ov{border-color:rgba(217,164,65,.65)}
+    .note.ov .word{color:#ffd89a}
+    .note .dotov{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--warn,#d9a441)}
+
+    /* hover 详细表 */
+    #pop{position:fixed;z-index:20;display:none;max-width:520px;padding:8px 10px;border:1px solid var(--line,#3f434a);
+      border-radius:8px;background:var(--panel,#2f333a);box-shadow:0 6px 22px rgba(0,0,0,.5);font-size:12px}
+    #pop h4{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--fg,#d6dae0)}
+    #pop table{border-collapse:collapse;width:100%}
+    #pop th,#pop td{padding:2px 8px 2px 0;text-align:left;vertical-align:top;white-space:nowrap}
+    #pop th{color:var(--dim,#9498a0);font-weight:500;border-bottom:1px solid var(--line,#3f434a)}
+    #pop td.mono{font-family:ui-monospace,Consolas,monospace}
+    #pop .dim{color:var(--dim,#9498a0)}
+    #pop .row2{margin-top:6px;color:var(--dim,#9498a0)}
+  </style>
+</head>
+
+<body>
+  <div class="bar">
+    <h1>音素预览</h1>
+    <span class="stat"><span class="dot" id="dot"></span><span id="stat">读取中…</span></span>
+    <span class="sp"></span>
+    <button class="btn" id="refresh" type="button">刷新</button>
+  </div>
+
+  <div class="wrap">
+    <div class="warn">只读预览：<b>上排是实际音素、下排是歌词</b>；鼠标停在音符上可看 IPA / 分类 / 发音方式 / 例词。
+      带琥珀色边框的音符是 <b>override</b>（音素被改写或冻结过）。</div>
+    <div class="grid" id="grid"></div>
+    <div class="msg" id="scope"></div>
+    <div class="msg" id="hint"></div>
+  </div>
+
+  <div id="pop"></div>
+
+  <script>
+    var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
+    var $ = function (id) { return document.getElementById(id); };
+
+    async function run(toolId, values) {
+      var res = await fetch('/api/run', {
+        method: 'POST', headers: H, body: JSON.stringify({ toolId: toolId, values: values || {} }),
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { }
+      if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+      return data;
+    }
+    function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+
+    function tokenTable(toks, title) {
+      if (!toks || !toks.length) return '';
+      var rows = toks.map(function (t) {
+        return '<tr><td class="mono">' + esc(t.symbol) + '</td><td class="mono dim">' + esc(t.ipa || '—') +
+          '</td><td>' + esc(t.manner || '—') + '</td><td class="dim">' + esc(t.official || '—') +
+          '</td><td>' + esc(t.example || '—') + '</td></tr>';
+      }).join('');
+      return '<h4>' + esc(title) + '</h4><table><tr><th>符号</th><th>IPA</th><th>发音方式</th><th>官方分类</th><th>例词</th></tr>' + rows + '</table>';
+    }
+
+    function showPop(note, ev) {
+      var n = note._data;
+      var html = tokenTable(n.tokens, (n.lyric || '（无歌词）') + ' · 实际音素');
+      if (n.defaults && n.defaults.length && n.defaults.map(function (t) { return t.symbol; }).join(' ') !==
+          n.tokens.map(function (t) { return t.symbol; }).join(' ')) {
+        html += '<div class="row2">' + tokenTable(n.defaults, '默认音素（引擎推导）').replace(/^<h4>[^<]*<\/h4>/, '') + '</div>';
+      }
+      if (n.isOverride) html += '<div class="row2">这个音符的音素是 override（被改写或冻结过）</div>';
+      if (n.timingKinds && n.timingKinds.length) html += '<div class="row2">时值类别：' + esc(n.timingKinds.join(' / ')) + '</div>';
+      var pop = $('pop');
+      pop.innerHTML = html;
+      pop.style.display = 'block';
+      var r = pop.getBoundingClientRect();
+      var x = Math.min(ev.clientX + 14, window.innerWidth - r.width - 8);
+      var y = Math.min(ev.clientY + 14, window.innerHeight - r.height - 8);
+      pop.style.left = Math.max(8, x) + 'px';
+      pop.style.top = Math.max(8, y) + 'px';
+    }
+
+    function render(rep) {
+      var grid = $('grid');
+      grid.innerHTML = '';
+      (rep.notes || []).forEach(function (n) {
+        var el = document.createElement('div');
+        el.className = 'note' + (n.isOverride ? ' ov' : '');
+        el._data = n;
+        var ph = (n.tokens || []).map(function (t) { return '<span class="ph" title="' + esc(t.manner || '') + '">' + esc(t.symbol) + '</span>'; }).join('');
+        el.innerHTML = (n.isOverride ? '<i class="dotov" title="override"></i>' : '') +
+          '<div class="phons">' + (ph || '<span class="ph dim">—</span>') + '</div>' +
+          '<div class="word">' + esc(n.lyric || '·') + '</div>' +
+          '<div class="sub">' + esc(n.language || '') + ' · ' + n.pitch + '</div>';
+        el.addEventListener('mouseenter', function (ev) { showPop(el, ev); });
+        el.addEventListener('mousemove', function (ev) { showPop(el, ev); });
+        el.addEventListener('mouseleave', function () { $('pop').style.display = 'none'; });
+        grid.appendChild(el);
+      });
+      var sc = rep.scope || {};
+      $('scope').textContent = '片段：' + (rep.clip || '—') + ' · ' + (sc.which || '') +
+        ' · 列出 ' + (rep.count || 0) + ' 个音符' + (sc.clipNoteCount ? '（片段共 ' + sc.clipNoteCount + '）' : '');
+      $('hint').textContent = rep.note || '';
+    }
+
+    async function boot() {
+      $('stat').textContent = '读取中…';
+      $('dot').className = 'dot';
+      $('pop').style.display = 'none';
+      try {
+        var d = await run('phoneme.view', {});
+        var rep = firstJSON(d);
+        if (!d.ok) throw new Error(d.hint || '读取失败');
+        $('dot').className = 'dot on';
+        $('stat').textContent = (rep.count || 0) + ' 个音符';
+        render(rep);
+      } catch (e) {
+        $('stat').textContent = /bridge not reachable|not running|exit 3/i.test(String(e.message))
+          ? 'ACE 没开（或桥没起来）—— 先打开 ACE Studio，再点「刷新」'
+          : ('读取失败：' + e.message);
+      }
+    }
+
+    $('refresh').addEventListener('click', boot);
+    window.addEventListener('scroll', function () { $('pop').style.display = 'none'; }, true);
+    boot();
+  </script>
+</body>
+
+</html>

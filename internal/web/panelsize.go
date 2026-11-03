@@ -47,6 +47,7 @@ var panelSizes = map[string][2]int{
 	"param.html":     {620, 760},
 	"pitch.html":     {620, 520},
 	"pitchtoanchors.html": {620, 520},
+	"phoneme.html":        {760, 560},
 	"pitchx.html":    {620, 560},
 	"rgb.html":       {460, 620},
 	"tone.html":      {700, 640},

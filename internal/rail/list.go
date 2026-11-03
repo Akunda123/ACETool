@@ -315,6 +315,7 @@ func allItems() []Item {
 		// ⚠️ 「展开」也是**蓝**（它确实开了个窗口），但它没有 Page —— 靠 Act 走动作。
 		// ⭐ 用户 2026-10-20：生成二维码（**默认隐藏**，在设置→按钮顺序与显示里勾上才出现）。
 		{Short: "二维码", Full: "生成二维码", Kind: KindFile, Page: "qr.html", DefaultHidden: true},
+		{Short: "音素", Full: "音素预览", Kind: KindPage, Page: "phoneme.html"},
 		{Short: "设置", Full: "设置", Kind: KindPage, Page: "settings.html"},
 		{Short: "展开", Full: "展开为 web 页", Kind: KindPage, Act: ActExpandWeb},
 	}
