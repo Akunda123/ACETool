@@ -58,6 +58,26 @@ func init() {
 	})
 }
 
+
+// langOf 把 CLI 回的语言名/代码归一成 (表键, inventory 用的英文名)。
+// ACE 的 `phoneme list` 回的是**全名**（"Chinese"），而工具参数用代码（CHN）——
+// 两套都认，否则所有 IPA/分类都查不到（表现为一片 “—”）。
+func langOf(code string) (key, full string) {
+	switch strings.ToUpper(strings.TrimSpace(code)) {
+	case "CHN", "ZH", "CHINESE":
+		return "zh", "Chinese"
+	case "JPN", "JP", "JAPANESE":
+		return "jp", "Japanese"
+	case "ENG", "EN", "ENGLISH":
+		return "eng", "English"
+	case "SPA", "ES", "SPANISH":
+		return "spa", "Spanish"
+	case "KOR", "KO", "KOREAN":
+		return "", "Korean"
+	}
+	return "", ""
+}
+
 func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any, error) {
 	sc, err := readNoteScope(ctx, rd, true)
 	if err != nil {
@@ -108,9 +128,8 @@ func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any
 	// ② 每种语言取一次 IPA 提示（音素 → IPA）；取不到就不带 IPA，不阻塞
 	hints := map[string]map[string]string{}
 	symbols := map[string][]string{}
-	langFull := map[string]string{"CHN": "Chinese", "JPN": "Japanese", "ENG": "English", "SPA": "Spanish", "KOR": "Korean"}
 	for code := range langSeen {
-		full := langFull[strings.ToUpper(code)]
+		k, full := langOf(code)
 		if full == "" {
 			continue
 		}
@@ -120,19 +139,20 @@ func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any
 			Vowels         []string          `json:"vowels"`
 		}
 		if err := readJSON(ctx, rd, &inv, "phoneme", "inventory", "--language", full, "--json"); err == nil {
-			hints[strings.ToUpper(code)] = inv.PhoneticsHints
-			symbols[strings.ToUpper(code)] = append(append([]string{}, inv.Consonants...), inv.Vowels...)
+			hints[k] = inv.PhoneticsHints
+			symbols[k] = append(append([]string{}, inv.Consonants...), inv.Vowels...)
 		}
 	}
 
-	langKey := map[string]string{"CHN": "zh", "JPN": "jp", "ENG": "eng", "SPA": "spa"}
 	describe := func(code string, syms []string) []phonTokenView {
-		up := strings.ToUpper(code)
-		lk := langKey[up]
+		lk, _ := langOf(code)
 		out := make([]phonTokenView, 0, len(syms))
 		for _, s := range syms {
-			e := phoneme.Describe(lk, s, hints[up][s])
-			out = append(out, phonTokenView{Symbol: e.Symbol, Candidates: rankCandidates(lk, symbols[up], hints[up], e.Manner, e.Symbol)})
+			e := phoneme.Describe(lk, s, hints[lk][s])
+			out = append(out, phonTokenView{
+				Symbol: e.Symbol, IPA: e.IPA, Official: e.Official, Manner: e.Manner, Example: e.Example,
+				Candidates: rankCandidates(lk, symbols[lk], hints[lk], e.Manner, e.Symbol),
+			})
 		}
 		return out
 	}
