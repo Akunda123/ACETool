@@ -41,20 +41,30 @@
     .note.ov .word{color:#ffd89a}
     .note .dotov{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--warn,#d9a441)}
 
-    /* hover 详细表（可停留、可改） */
+    /* hover 面板：贴音符右侧，不盖住音符本体 */
     #pop{position:fixed;z-index:20;display:none;width:min(560px,92vw);padding:10px 12px;border:1px solid var(--line,#3f434a);
       border-radius:8px;background:var(--panel,#2f333a);box-shadow:0 8px 26px rgba(0,0,0,.55);font-size:12px}
     #pop h4{margin:0 0 6px;font-size:12.5px;font-weight:600}
     #pop .tok{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
     #pop .tok:last-child{border-bottom:0}
-    #pop .tok select{background:var(--inset,#242830);color:var(--fg,#d6dae0);border:1px solid var(--line,#3f434a);
-      border-radius:5px;padding:2px 6px;font:12px ui-monospace,Consolas,monospace;min-width:92px}
+    #pop .tok .sym{min-width:44px;text-align:center;font:12px ui-monospace,Consolas,monospace;color:#9fd2ff;
+      background:rgba(26,115,232,.14);border:1px solid rgba(26,115,232,.35);border-radius:5px;padding:2px 8px;cursor:pointer}
+    #pop .tok .sym:hover{border-color:var(--accent,#1a73e8);background:rgba(26,115,232,.24)}
     #pop .tok .meta{color:var(--dim,#9498a0);font-size:11.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     #pop .acts{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
     #pop .warnline{color:#ffd89a;font-size:11.5px}
     #pop .ok{color:#5ebd7a}
     #pop .bad{color:var(--bad,#e06c75)}
-    #pop .mono{font-family:ui-monospace,Consolas,monospace}
+
+    /* 自绘候选菜单（不用原生 select：系统下拉会偷走事件，面板会闪没） */
+    #menu{position:fixed;z-index:30;display:none;max-height:min(340px,60vh);overflow:auto;min-width:150px;
+      border:1px solid var(--line,#3f434a);border-radius:8px;background:var(--panel,#2f333a);
+      box-shadow:0 8px 26px rgba(0,0,0,.55);padding:4px}
+    #menu .it{padding:3px 8px;border-radius:5px;cursor:pointer;display:flex;gap:8px;align-items:center;
+      font:12px ui-monospace,Consolas,monospace;white-space:nowrap}
+    #menu .it:hover{background:rgba(26,115,232,.28)}
+    #menu .it.on{background:rgba(26,115,232,.18)}
+    #menu .it .mm{color:var(--dim,#9498a0);font-family:"Microsoft YaHei",system-ui,sans-serif;font-size:11px}
   </style>
 </head>
 
@@ -67,7 +77,7 @@
   </div>
 
   <div class="wrap">
-    <div class="warn">只读列表 + 可改音素：<b>上排音素、下排歌词</b>；鼠标停到音符上，浮层里每个音素是一个下拉框，
+    <div class="warn">只读列表 + 可改音素：<b>上排音素、下排歌词</b>；鼠标停到音符上，右侧面板里点音素即可换，
       改完点「应用」（只写这一个音符）。琥珀色边框 = <b>override</b>（音素被改写或冻结过）。</div>
     <div class="grid" id="grid"></div>
     <div class="msg" id="scope"></div>
@@ -75,11 +85,13 @@
   </div>
 
   <div id="pop"></div>
+  <div id="menu"></div>
 
   <script>
     var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
     var $ = function (id) { return document.getElementById(id); };
-    var closeTimer = null, currentNote = null, interacting = false, selectOpen = false;
+    var currentNote = null;   // 面板当前展示的音符
+    var curNoteEl = null;     // 面板锚定的音符卡
 
     async function run(toolId, values) {
       var res = await fetch('/api/run', {
@@ -93,64 +105,108 @@
     function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
-    function scheduleClose() {
-      if (interacting || selectOpen) return;
-      clearTimeout(closeTimer);
-      closeTimer = setTimeout(function () {
-        var pop = $('pop');
-        // 正在操作下拉：焦点还在浮层里（原生 select 展开时鼠标会短暂"离开"浮层）
-        if (interacting || pop.contains(document.activeElement)) return;
-        hidePop();
-      }, 400);
-    }
-    function cancelClose() { clearTimeout(closeTimer); }
-    function hidePop() { $('pop').style.display = 'none'; currentNote = null; interacting = false; }
+    function hideMenu() { $('menu').style.display = 'none'; }
+    function hidePop() { $('pop').style.display = 'none'; hideMenu(); currentNote = null; curNoteEl = null; }
 
-    function positionPop(ev) {
+    /* 面板贴在音符右侧；右侧放不下翻到左边；上下夹在视口内 */
+    function placePop(el) {
       var pop = $('pop');
-      var r = pop.getBoundingClientRect();
-      var x = Math.min(ev.clientX + 14, window.innerWidth - r.width - 8);
-      var y = Math.min(ev.clientY + 14, window.innerHeight - r.height - 8);
-      pop.style.left = Math.max(8, x) + 'px';
-      pop.style.top = Math.max(8, y) + 'px';
+      var r = el.getBoundingClientRect();
+      var w = pop.offsetWidth, h = pop.offsetHeight;
+      var x = r.right + 10, y = r.top - 6;
+      if (x + w > window.innerWidth - 8) x = r.left - w - 10;
+      if (x < 8) x = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+      if (y + h > window.innerHeight - 8) y = window.innerHeight - h - 8;
+      if (y < 8) y = 8;
+      pop.style.left = Math.round(x) + 'px';
+      pop.style.top = Math.round(y) + 'px';
     }
 
-    function showPop(el, ev) {
-      cancelClose();
+    function tokenMeta(t) {
+      return [t.ipa ? '/' + t.ipa + '/' : '', t.manner || '', t.official || '', t.example ? '如 ' + t.example : '']
+        .filter(Boolean).join(' · ');
+    }
+
+    function showPop(el) {
+      hideMenu();
       var n = el._data;
-      currentNote = n;
+      currentNote = n; curNoteEl = el;
+      if (!n._picked) n._picked = {};
       var pop = $('pop');
-      var toks = (n.tokens || []).map(function (t, i) {
-        var opts = (t.candidates && t.candidates.length ? t.candidates : [t.symbol]).map(function (c) {
-          return '<option value="' + esc(c) + '"' + (c === t.symbol ? ' selected' : '') + '>' + esc(c) + '</option>';
-        }).join('');
-        var meta = [t.ipa ? '/' + t.ipa + '/' : '', t.manner || '', t.official || '', t.example ? '如 ' + t.example : '']
-          .filter(Boolean).join(' · ');
-        return '<div class="tok"><select data-i="' + i + '">' + opts + '</select>' +
-          '<span class="meta">' + esc(meta || '—') + '</span></div>';
+      var rows = (n.tokens || []).map(function (t, i) {
+        var cur = (n._picked[i] || t.symbol);
+        var meta = (n._picked[i] && window.__metaByIdx && window.__metaByIdx[i]) ? window.__metaByIdx[i] : tokenMeta(t);
+        return '<div class="tok"><span class="sym" data-i="' + i + '" title="点击换音素">' + esc(cur) + '</span>' +
+          '<span class="meta" data-mi="' + i + '">' + esc(meta || '—') + '</span></div>';
       }).join('');
-      var froze = !n.isOverride;
       pop.innerHTML =
-        '<h4>' + esc(n.lyric || '（无歌词）') + ' <span class="mono" style="color:#9498a0;font-weight:400">' +
-        esc((n.tokens || []).map(function (t) { return t.symbol; }).join(' ')) + '</span></h4>' +
-        toks +
-        '<div class="acts">' +
-        '<button class="btn" id="popApply" type="button">应用</button>' +
+        '<h4>' + esc(n.lyric || '（无歌词）') + ' <span style="color:#9498a0;font-weight:400;font-family:ui-monospace,Consolas,monospace">' +
+        esc((n.tokens || []).map(function (t, i) { return (n._picked[i] || t.symbol); }).join(' ')) + '</span></h4>' + rows +
+        '<div class="acts"><button class="btn" id="popApply" type="button">应用</button>' +
         '<button class="btn" id="popReset" type="button">恢复默认</button>' +
-        '<span id="popMsg" class="msg"></span>' +
-        '</div>' +
-        (froze ? '<div class="warnline">这个音符还没被改写过；应用后发音会固定成 override（改歌词不再影响它）。</div>' : '');
+        '<span id="popMsg" class="msg"></span></div>' +
+        (n.isOverride ? '' : '<div class="warnline">这个音符还没被改写过；应用后发音会固定成 override（改歌词不再影响它）。</div>');
       pop.style.display = 'block';
-      positionPop(ev);
-
+      placePop(el);
       $('popApply').addEventListener('click', function () { applyNote(n, false); });
       $('popReset').addEventListener('click', function () { applyNote(n, true); });
+      [].slice.call(pop.querySelectorAll('.sym')).forEach(function (b) {
+        b.addEventListener('click', function (ev) { openMenu(b, n, parseInt(b.getAttribute('data-i'), 10), ev); });
+      });
+    }
+
+    /* 自绘候选菜单：点击音素符号打开；点选项写入 _picked，点菜单外才关 */
+    function openMenu(anchor, n, idx, ev) {
+      ev.stopPropagation();
+      var t = n.tokens[idx];
+      var list = (t.candidates && t.candidates.length ? t.candidates : [t.symbol]);
+      var menu = $('menu');
+      var cur = (n._picked && n._picked[idx]) || t.symbol;
+      menu.innerHTML = list.map(function (c) {
+        var meta = '';
+        var cat = (window.__catalog && window.__catalog[n.language === 'Chinese' ? 'zh' : (n.language === 'Japanese' ? 'jp' : (n.language === 'English' ? 'eng' : 'spa'))]) || {};
+        var cc = cat[c];
+        if (cc) meta = [cc.ipa ? '/' + cc.ipa + '/' : '', cc.manner || '', cc.example ? '如 ' + cc.example : ''].filter(Boolean).join(' · ');
+        return '<div class="it' + (c === cur ? ' on' : '') + '" data-v="' + esc(c) + '"><span>' + esc(c) +
+          '</span><span class="mm">' + esc(meta) + '</span></div>';
+      }).join('');
+      menu.style.display = 'block';
+      var r = anchor.getBoundingClientRect();
+      var w = menu.offsetWidth, h = menu.offsetHeight;
+      var x = r.left, y = r.bottom + 4;
+      if (x + w > window.innerWidth - 8) x = window.innerWidth - w - 8;
+      if (y + h > window.innerHeight - 8) y = Math.max(8, r.top - h - 4);
+      menu.style.left = Math.round(x) + 'px';
+      menu.style.top = Math.round(y) + 'px';
+      [].slice.call(menu.querySelectorAll('.it')).forEach(function (it) {
+        it.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var v = it.getAttribute('data-v');
+          n._picked[idx] = v;
+          // 更新这一行的符号与说明（说明用选中符号自己的 meta，查不到就保留原样）
+          var symEl = $('pop').querySelector('.sym[data-i="' + idx + '"]');
+          var metaEl = $('pop').querySelector('.meta[data-mi="' + idx + '"]');
+          if (symEl) symEl.textContent = v;
+          var cand = (t.candidates || []);
+          var cat2 = (window.__catalog && window.__catalog[n.language === 'Chinese' ? 'zh' : (n.language === 'Japanese' ? 'jp' : (n.language === 'English' ? 'eng' : 'spa'))]) || {};
+          var c2 = cat2[v];
+          if (metaEl && c2) metaEl.textContent = [c2.ipa ? '/' + c2.ipa + '/' : '', c2.manner || '', c2.official || '', c2.example ? '如 ' + c2.example : ''].filter(Boolean).join(' · ');
+          hideMenu();
+          // 标题里的整串也同步
+          var h = $('pop').querySelector('h4 span');
+          if (h) {
+            var all = (n.tokens || []).map(function (tt, i) { return (n._picked[i] || tt.symbol); });
+            h.textContent = all.join(' ');
+          }
+        });
+      });
     }
 
     async function applyNote(n, reset) {
       var msg = $('popMsg');
-      var sels = [].slice.call($('pop').querySelectorAll('select'));
-      var toks = reset ? [] : sels.map(function (s) { return s.value; });
+      var toks = reset ? [] : (n.tokens || []).map(function (t, i) {
+        return (n._picked && n._picked[i]) || t.symbol;
+      });
       msg.className = 'msg';
       msg.textContent = '写入中…';
       try {
@@ -159,7 +215,7 @@
         if (!d.ok) throw new Error(d.hint || '写入失败');
         msg.className = 'msg ok';
         msg.textContent = reset ? '已恢复默认' : ('已写入：' + (r.after || []).join(' '));
-        setTimeout(boot, 600);
+        setTimeout(boot, 700);
       } catch (e) {
         msg.className = 'msg bad';
         msg.textContent = '写入失败：' + e.message;
@@ -173,13 +229,13 @@
         var el = document.createElement('div');
         el.className = 'note' + (n.isOverride ? ' ov' : '');
         el._data = n;
+        n._picked = {};
         var ph = (n.tokens || []).map(function (t) { return '<span class="ph" title="' + esc(t.manner || '') + '">' + esc(t.symbol) + '</span>'; }).join('');
         el.innerHTML = (n.isOverride ? '<i class="dotov" title="override"></i>' : '') +
           '<div class="phons">' + (ph || '<span class="ph">—</span>') + '</div>' +
           '<div class="word">' + esc(n.lyric || '·') + '</div>' +
           '<div class="sub">' + esc(n.language || '') + ' · ' + n.pitch + '</div>';
-        el.addEventListener('mouseenter', function (ev) { showPop(el, ev); });
-        el.addEventListener('mouseleave', scheduleClose);
+        el.addEventListener('mouseenter', function () { showPop(el); });
         grid.appendChild(el);
       });
       var sc = rep.scope || {};
@@ -198,6 +254,7 @@
         if (!d.ok) throw new Error(d.hint || '读取失败');
         $('dot').className = 'dot on';
         $('stat').textContent = (rep.count || 0) + ' 个音符';
+        window.__catalog = rep.catalog || {};
         render(rep);
       } catch (e) {
         $('stat').textContent = /bridge not reachable|not running|exit 3/i.test(String(e.message))
@@ -206,35 +263,18 @@
       }
     }
 
-    $('refresh').addEventListener('click', boot);
+    /* 关闭只发生在「点面板与菜单之外」或 Esc —— 不随鼠标离开、不随滚动 */
     document.addEventListener('pointerdown', function (ev) {
-      if (selectOpen) return;             // 正在选下拉，这一击不算“点外面”
-      var pop = $('pop');
-      if (pop.contains(ev.target)) return;
+      if ($('menu').contains(ev.target)) return;
+      if ($('pop').contains(ev.target)) return;
       if (ev.target && ev.target.closest && ev.target.closest('.note')) return;
-      interacting = false;
       hidePop();
     }, true);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') hidePop(); });
-    $('pop').addEventListener('mouseenter', cancelClose);
-    $('pop').addEventListener('pointerdown', function (ev) {
-      interacting = true; cancelClose();
-      if (ev.target && ev.target.tagName === 'SELECT') selectOpen = true;
+    window.addEventListener('resize', function () {
+      if (curNoteEl && $('pop').style.display === 'block') placePop(curNoteEl);
     });
-    $('pop').addEventListener('change', function () {
-      cancelClose();
-      setTimeout(function () { selectOpen = false; interacting = false; }, 350);
-    });
-    $('pop').addEventListener('focusin', function (ev) {
-      if (ev.target && ev.target.tagName === 'SELECT') { interacting = true; cancelClose(); }
-    });
-    // 原生 select 展开期间会引发 focusout/鼠标离开 —— 一律不关，等用户点浮层外
-    $('pop').addEventListener('selectstart', function (ev) { ev.stopPropagation(); });
-    $('pop').addEventListener('mousedown', function (ev) {
-      if (ev.target && ev.target.tagName === 'SELECT') { interacting = true; cancelClose(); }
-    });
-    $('pop').addEventListener('change', function () { cancelClose(); });
-    $('pop').addEventListener('mouseleave', scheduleClose);
+    $('refresh').addEventListener('click', boot);
     boot();
   </script>
 </body>

@@ -40,6 +40,7 @@ type phonViewReport struct {
 	Clip    string         `json:"clip,omitempty"`
 	Lang    string         `json:"language,omitempty"`
 	Symbols map[string][]string `json:"symbols,omitempty"` // 语言 → 合法符号（面板做下拉用）
+	Catalog map[string]map[string]phonTokenView `json:"catalog,omitempty"` // 语言 → 符号 → 展示信息（候选菜单用）
 	Count   int            `json:"count"`
 	Notes   []phonNoteView `json:"notes"`
 	Missing []string       `json:"missing,omitempty"`
@@ -177,6 +178,15 @@ func phonViewPlan(ctx context.Context, rd ReadFunc, vals map[string]string) (any
 		})
 	}
 	rep.Symbols = symbols
+	rep.Catalog = map[string]map[string]phonTokenView{}
+	for lk, syms := range symbols {
+		m := make(map[string]phonTokenView, len(syms))
+		for _, sym := range syms {
+			e := phoneme.Describe(lk, sym, hints[lk][sym])
+			m[sym] = phonTokenView{Symbol: e.Symbol, IPA: e.IPA, Official: e.Official, Manner: e.Manner, Example: e.Example}
+		}
+		rep.Catalog[lk] = m
+	}
 	rep.Count = len(rep.Notes)
 	if rep.Count == 0 {
 		rep.Note = "这批音符里没有读到音素（可能不是 Sing 片段）"
