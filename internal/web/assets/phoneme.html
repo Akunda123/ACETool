@@ -23,15 +23,25 @@
       padding:5px 12px;font:inherit;font-size:12.5px;cursor:pointer;flex:0 0 auto}
     .btn:hover{border-color:var(--accent,#1a73e8)}
     .btn:disabled{opacity:.45;cursor:default}
-    .wrap{flex:1 1 auto;overflow:auto;padding:10px;position:relative}
     .warn{margin:0 0 10px;padding:8px 10px;border:1px solid var(--warn,#d9a441);border-left-width:4px;
       border-radius:6px;background:rgba(217,164,65,.12);color:#ffd89a;font-size:12.5px}
     .msg{color:var(--dim,#9498a0);font-size:12px}
 
+    /* 左：音符网格；右：固定检查器（不浮动、不跟随、不跳动） */
+    .split{flex:1 1 auto;display:flex;min-height:0}
+    .left{flex:1 1 auto;overflow:auto;padding:10px;min-width:0}
+    .right{flex:0 0 340px;border-left:1px solid var(--line,#3f434a);display:flex;flex-direction:column;min-height:0;
+      background:var(--panel,#2f333a)}
+    .right .hd{padding:8px 10px;border-bottom:1px solid var(--line,#3f434a);font-size:12.5px;font-weight:600}
+    .right .bd{flex:1 1 auto;overflow:auto;padding:8px 10px}
+    .right .ft{padding:8px 10px;border-top:1px solid var(--line,#3f434a);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .empty{color:var(--dim,#9498a0);font-size:12px;padding:8px 0}
+
     .grid{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
     .note{position:relative;min-width:64px;padding:5px 7px 6px;border:1px solid var(--line,#3f434a);border-radius:8px;
-      background:var(--inset,#242830);cursor:default;user-select:none}
-    .note:hover{border-color:var(--accent,#1a73e8);z-index:5}
+      background:var(--inset,#242830);cursor:pointer;user-select:none}
+    .note:hover{border-color:var(--accent,#1a73e8)}
+    .note.on{border-color:var(--accent,#1a73e8);box-shadow:0 0 0 1px var(--accent,#1a73e8) inset}
     .note .phons{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;margin-bottom:3px}
     .note .ph{font:11.5px/1.3 ui-monospace,Consolas,monospace;color:#9fd2ff;background:rgba(26,115,232,.14);
       border:1px solid rgba(26,115,232,.35);border-radius:4px;padding:0 4px}
@@ -41,30 +51,22 @@
     .note.ov .word{color:#ffd89a}
     .note .dotov{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--warn,#d9a441)}
 
-    /* hover 面板：贴音符右侧，不盖住音符本体 */
-    #pop{position:fixed;z-index:20;display:none;width:min(560px,92vw);padding:10px 12px;border:1px solid var(--line,#3f434a);
-      border-radius:8px;background:var(--panel,#2f333a);box-shadow:0 8px 26px rgba(0,0,0,.55);font-size:12px}
-    #pop h4{margin:0 0 6px;font-size:12.5px;font-weight:600}
-    #pop .tok{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
-    #pop .tok:last-child{border-bottom:0}
-    #pop .tok .sym{min-width:44px;text-align:center;font:12px ui-monospace,Consolas,monospace;color:#9fd2ff;
+    /* 检查器里的音素行：点符号展开候选（候选列表就在行内向下展开，不浮动） */
+    .tok{border-bottom:1px dashed rgba(255,255,255,.06);padding:4px 0}
+    .tok:last-child{border-bottom:0}
+    .tok .line{display:flex;align-items:center;gap:8px}
+    .tok .sym{min-width:48px;text-align:center;font:12px ui-monospace,Consolas,monospace;color:#9fd2ff;
       background:rgba(26,115,232,.14);border:1px solid rgba(26,115,232,.35);border-radius:5px;padding:2px 8px;cursor:pointer}
-    #pop .tok .sym:hover{border-color:var(--accent,#1a73e8);background:rgba(26,115,232,.24)}
-    #pop .tok .meta{color:var(--dim,#9498a0);font-size:11.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    #pop .acts{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
-    #pop .warnline{color:#ffd89a;font-size:11.5px}
-    #pop .ok{color:#5ebd7a}
-    #pop .bad{color:var(--bad,#e06c75)}
-
-    /* 自绘候选菜单（不用原生 select：系统下拉会偷走事件，面板会闪没） */
-    #menu{position:fixed;z-index:30;display:none;max-height:min(340px,60vh);overflow:auto;min-width:150px;
-      border:1px solid var(--line,#3f434a);border-radius:8px;background:var(--panel,#2f333a);
-      box-shadow:0 8px 26px rgba(0,0,0,.55);padding:4px}
-    #menu .it{padding:3px 8px;border-radius:5px;cursor:pointer;display:flex;gap:8px;align-items:center;
-      font:12px ui-monospace,Consolas,monospace;white-space:nowrap}
-    #menu .it:hover{background:rgba(26,115,232,.28)}
-    #menu .it.on{background:rgba(26,115,232,.18)}
-    #menu .it .mm{color:var(--dim,#9498a0);font-family:"Microsoft YaHei",system-ui,sans-serif;font-size:11px}
+    .tok .sym:hover{border-color:var(--accent,#1a73e8);background:rgba(26,115,232,.24)}
+    .tok .meta{color:var(--dim,#9498a0);font-size:11.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cands{margin:4px 0 2px 0;display:none;flex-wrap:wrap;gap:4px}
+    .cands.open{display:flex}
+    .cand{font:12px ui-monospace,Consolas,monospace;border:1px solid var(--line,#3f434a);border-radius:5px;
+      padding:2px 7px;cursor:pointer;background:var(--inset,#242830);white-space:nowrap}
+    .cand:hover{border-color:var(--accent,#1a73e8);background:rgba(26,115,232,.2)}
+    .cand.on{border-color:var(--accent,#1a73e8);color:#9fd2ff}
+    .right .ok{color:#5ebd7a}
+    .right .bad{color:var(--bad,#e06c75)}
   </style>
 </head>
 
@@ -76,22 +78,29 @@
     <button class="btn" id="refresh" type="button">刷新</button>
   </div>
 
-  <div class="wrap">
-    <div class="warn">只读列表 + 可改音素：<b>上排音素、下排歌词</b>；鼠标停到音符上，右侧面板里点音素即可换，
-      改完点「应用」（只写这一个音符）。琥珀色边框 = <b>override</b>（音素被改写或冻结过）。</div>
-    <div class="grid" id="grid"></div>
-    <div class="msg" id="scope"></div>
-    <div class="msg" id="hint"></div>
+  <div class="split">
+    <div class="left">
+      <div class="warn">上排音素、下排歌词。<b>点音符</b>在右侧检查器里改音素，改完点「应用」。</div>
+      <div class="grid" id="grid"></div>
+      <div class="msg" id="scope"></div>
+    </div>
+    <div class="right">
+      <div class="hd" id="insHead">检查器</div>
+      <div class="bd" id="insBody"><div class="empty">点左边的音符</div></div>
+      <div class="ft">
+        <button class="btn" id="apply" type="button" disabled>应用</button>
+        <button class="btn" id="reset" type="button" disabled>恢复默认</button>
+        <span class="msg" id="insMsg"></span>
+      </div>
+    </div>
   </div>
-
-  <div id="pop"></div>
-  <div id="menu"></div>
 
   <script>
     var H = { 'Content-Type': 'application/json', 'X-ACETool': '1' };
     var $ = function (id) { return document.getElementById(id); };
-    var currentNote = null;   // 面板当前展示的音符
-    var curNoteEl = null;     // 面板锚定的音符卡
+    var CUR = null;          // 检查器里的音符对象
+    var CUR_EL = null;       // 对应卡片
+    var PICK = {};           // 本音符待提交的修改：idx → symbol
 
     async function run(toolId, values) {
       var res = await fetch('/api/run', {
@@ -105,151 +114,104 @@
     function firstJSON(d) { return ((d.calls || [])[0] || {}).json || {}; }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
-
-    function catOf(n) {
-      var key = (n.language === 'Chinese') ? 'zh' : (n.language === 'Japanese') ? 'jp'
-        : (n.language === 'English') ? 'eng' : 'spa';
-      return (window.__catalog && window.__catalog[key]) || {};
+    function langKey(n) {
+      var l = (n.language || '').toLowerCase();
+      if (l.indexOf('chin') >= 0) return 'zh';
+      if (l.indexOf('japan') >= 0) return 'jp';
+      if (l.indexOf('engl') >= 0) return 'eng';
+      if (l.indexOf('span') >= 0) return 'spa';
+      return 'zh';
     }
-    function metaOf(n, sym) {
-      var c = catOf(n)[sym];
-      if (!c) return { symbol: sym };
-      return { symbol: sym, ipa: c.ipa, official: c.official, manner: c.manner, example: c.example, candidates: (catOf(n)[sym] || {}).candidates };
-    }
-    function refreshCard(el, n) {
-      var ph = (n.tokens || []).map(function (t) {
-        return '<span class="ph" title="' + esc(t.manner || '') + '">' + esc(t.symbol) + '</span>';
-      }).join('');
-      var phons = el.querySelector('.phons');
-      if (phons) phons.innerHTML = ph || '<span class="ph">—</span>';
-      if (n.isOverride) el.classList.add('ov'); else el.classList.remove('ov');
+    function catOf(n) { return (window.__catalog && window.__catalog[langKey(n)]) || {}; }
+    function metaText(c) {
+      if (!c) return '—';
+      return [c.ipa ? '/' + c.ipa + '/' : '', c.manner || '', c.official || '', c.example ? '如 ' + c.example : '']
+        .filter(Boolean).join(' · ') || '—';
     }
 
-    function hideMenu() { $('menu').style.display = 'none'; }
-    function hidePop() { $('pop').style.display = 'none'; hideMenu(); currentNote = null; curNoteEl = null; }
-
-    /* 面板贴在音符右侧；右侧放不下翻到左边；上下夹在视口内 */
-    function placePop(el) {
-      var pop = $('pop');
-      var r = el.getBoundingClientRect();
-      var w = pop.offsetWidth, h = pop.offsetHeight;
-      var x = r.right + 10, y = r.top - 6;
-      if (x + w > window.innerWidth - 8) x = r.left - w - 10;
-      if (x < 8) x = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
-      if (y + h > window.innerHeight - 8) y = window.innerHeight - h - 8;
-      if (y < 8) y = 8;
-      pop.style.left = Math.round(x) + 'px';
-      pop.style.top = Math.round(y) + 'px';
+    function showInspector(n, el) {
+      CUR = n; CUR_EL = el; PICK = {};
+      [].slice.call(document.querySelectorAll('.note.on')).forEach(function (x) { x.classList.remove('on'); });
+      el.classList.add('on');
+      $('apply').disabled = false;
+      $('reset').disabled = false;
+      $('insMsg').textContent = '';
+      renderInspector();
     }
 
-    function tokenMeta(t) {
-      return [t.ipa ? '/' + t.ipa + '/' : '', t.manner || '', t.official || '', t.example ? '如 ' + t.example : '']
-        .filter(Boolean).join(' · ');
-    }
-
-    function showPop(el) {
-      hideMenu();
-      var n = el._data;
-      currentNote = n; curNoteEl = el;
-      if (!n._picked) n._picked = {};
-      var pop = $('pop');
+    function renderInspector() {
+      var n = CUR;
+      if (!n) return;
+      var cat = catOf(n);
+      $('insHead').textContent = (n.lyric || '（无歌词）') + ' · ' + (n.language || '') + ' · 音高 ' + n.pitch;
       var rows = (n.tokens || []).map(function (t, i) {
-        var cur = (n._picked[i] || t.symbol);
-        var meta = (n._picked[i] && window.__metaByIdx && window.__metaByIdx[i]) ? window.__metaByIdx[i] : tokenMeta(t);
-        return '<div class="tok"><span class="sym" data-i="' + i + '" title="点击换音素">' + esc(cur) + '</span>' +
-          '<span class="meta" data-mi="' + i + '">' + esc(meta || '—') + '</span></div>';
+        var cur = PICK[i] || t.symbol;
+        var cands = (t.candidates && t.candidates.length ? t.candidates : [t.symbol]).slice(0, 200);
+        var candHtml = cands.map(function (c) {
+          return '<span class="cand' + (c === cur ? ' on' : '') + '" data-i="' + i + '" data-v="' + esc(c) + '" title="' +
+            esc(metaText(cat[c])) + '">' + esc(c) + '</span>';
+        }).join('');
+        return '<div class="tok" data-i="' + i + '">' +
+          '<div class="line"><span class="sym" data-i="' + i + '">' + esc(cur) + '</span>' +
+          '<span class="meta" data-mi="' + i + '">' + esc(metaText(cat[cur])) + '</span></div>' +
+          '<div class="cands" id="cands-' + i + '">' + candHtml + '</div></div>';
       }).join('');
-      pop.innerHTML =
-        '<h4>' + esc(n.lyric || '（无歌词）') + ' <span style="color:#9498a0;font-weight:400;font-family:ui-monospace,Consolas,monospace">' +
-        esc((n.tokens || []).map(function (t, i) { return (n._picked[i] || t.symbol); }).join(' ')) + '</span></h4>' + rows +
-        '<div class="acts"><button class="btn" id="popApply" type="button">应用</button>' +
-        '<button class="btn" id="popReset" type="button">恢复默认</button>' +
-        '<span id="popMsg" class="msg"></span></div>' +
-        (n.isOverride ? '' : '<div class="warnline">这个音符还没被改写过；应用后发音会固定成 override（改歌词不再影响它）。</div>');
-      pop.style.display = 'block';
-      placePop(el);
-      $('popApply').addEventListener('click', function () { applyNote(n, false); });
-      $('popReset').addEventListener('click', function () { applyNote(n, true); });
-      [].slice.call(pop.querySelectorAll('.sym')).forEach(function (b) {
-        b.addEventListener('click', function (ev) { openMenu(b, n, parseInt(b.getAttribute('data-i'), 10), ev); });
-      });
-    }
+      $('insBody').innerHTML = (rows || '<div class="empty">这个音符没读到音素</div>') +
+        ((n.timings && n.timings.length) ? '<div class="empty">时值类别：' + esc(n.timings.join(' / ')) + '</div>' : '');
 
-    /* 自绘候选菜单：点击音素符号打开；点选项写入 _picked，点菜单外才关 */
-    function openMenu(anchor, n, idx, ev) {
-      ev.stopPropagation();
-      var t = n.tokens[idx];
-      var list = (t.candidates && t.candidates.length ? t.candidates : [t.symbol]);
-      var menu = $('menu');
-      var cur = (n._picked && n._picked[idx]) || t.symbol;
-      menu.innerHTML = list.map(function (c) {
-        var meta = '';
-        var cat = (window.__catalog && window.__catalog[n.language === 'Chinese' ? 'zh' : (n.language === 'Japanese' ? 'jp' : (n.language === 'English' ? 'eng' : 'spa'))]) || {};
-        var cc = cat[c];
-        if (cc) meta = [cc.ipa ? '/' + cc.ipa + '/' : '', cc.manner || '', cc.example ? '如 ' + cc.example : ''].filter(Boolean).join(' · ');
-        return '<div class="it' + (c === cur ? ' on' : '') + '" data-v="' + esc(c) + '"><span>' + esc(c) +
-          '</span><span class="mm">' + esc(meta) + '</span></div>';
-      }).join('');
-      menu.style.display = 'block';
-      var r = anchor.getBoundingClientRect();
-      var w = menu.offsetWidth, h = menu.offsetHeight;
-      var x = r.left, y = r.bottom + 4;
-      if (x + w > window.innerWidth - 8) x = window.innerWidth - w - 8;
-      if (y + h > window.innerHeight - 8) y = Math.max(8, r.top - h - 4);
-      menu.style.left = Math.round(x) + 'px';
-      menu.style.top = Math.round(y) + 'px';
-      [].slice.call(menu.querySelectorAll('.it')).forEach(function (it) {
-        it.addEventListener('click', function (e) {
-          e.stopPropagation();
-          var v = it.getAttribute('data-v');
-          n._picked[idx] = v;
-          // 更新这一行的符号与说明（说明用选中符号自己的 meta，查不到就保留原样）
-          var symEl = $('pop').querySelector('.sym[data-i="' + idx + '"]');
-          var metaEl = $('pop').querySelector('.meta[data-mi="' + idx + '"]');
-          if (symEl) symEl.textContent = v;
-          var cand = (t.candidates || []);
-          var cat2 = (window.__catalog && window.__catalog[n.language === 'Chinese' ? 'zh' : (n.language === 'Japanese' ? 'jp' : (n.language === 'English' ? 'eng' : 'spa'))]) || {};
-          var c2 = cat2[v];
-          if (metaEl && c2) metaEl.textContent = [c2.ipa ? '/' + c2.ipa + '/' : '', c2.manner || '', c2.official || '', c2.example ? '如 ' + c2.example : ''].filter(Boolean).join(' · ');
-          hideMenu();
-          // 标题里的整串也同步
-          var h = $('pop').querySelector('h4 span');
-          if (h) {
-            var all = (n.tokens || []).map(function (tt, i) { return (n._picked[i] || tt.symbol); });
-            h.textContent = all.join(' ');
-          }
+      [].slice.call($('insBody').querySelectorAll('.sym')).forEach(function (b) {
+        b.addEventListener('click', function () {
+          // 一次只展开一个，避免长列表滚来滚去
+          [].slice.call($('insBody').querySelectorAll('.cands.open')).forEach(function (x) { x.classList.remove('open'); });
+          var box = $('cands-' + b.getAttribute('data-i'));
+          if (box) box.classList.add('open');
+        });
+      });
+      [].slice.call($('insBody').querySelectorAll('.cand')).forEach(function (c) {
+        c.addEventListener('click', function () {
+          PICK[parseInt(c.getAttribute('data-i'), 10)] = c.getAttribute('data-v');
+          renderInspector();
+          var box = $('cands-' + c.getAttribute('data-i'));
+          if (box) box.classList.add('open');
         });
       });
     }
 
-    async function applyNote(n, reset) {
-      var msg = $('popMsg');
-      var toks = reset ? [] : (n.tokens || []).map(function (t, i) {
-        return (n._picked && n._picked[i]) || t.symbol;
-      });
-      msg.className = 'msg';
-      msg.textContent = '写入中…';
+    async function apply(reset) {
+      var n = CUR;
+      if (!n) return;
+      var toks = reset ? [] : (n.tokens || []).map(function (t, i) { return PICK[i] || t.symbol; });
+      $('insMsg').className = 'msg';
+      $('insMsg').textContent = '写入中…';
+      $('apply').disabled = true; $('reset').disabled = true;
       try {
         var d = await run('phoneme.set', { noteUuid: n.noteUuid, phonemes: toks.join(' ') });
         var r = firstJSON(d);
         if (!d.ok) throw new Error(d.hint || '写入失败');
-        // 就地更新：保持面板打开（用户要接着改下一个音素）
-        var after = (r.after && r.after.length) ? r.after : (reset && r.before ? [] : toks);
-        var newToks = after.map(function (sym) { return metaOf(n, sym); });
-        if (reset) {
-          var dflt = (n.defaults || []).map(function (t) { return metaOf(n, t.symbol); });
-          if (dflt.length) newToks = dflt;
+        var after = (r.after && r.after.length) ? r.after : toks;
+        if (reset && n.defaults && n.defaults.length) after = n.defaults.map(function (t) { return t.symbol; });
+        var cat = catOf(n);
+        var candFor = (n.tokens && n.tokens[0] && n.tokens[0].candidates) ? n.tokens[0].candidates : after;
+        n.tokens = after.map(function (sym) {
+          var c = cat[sym] || {};
+          return { symbol: sym, ipa: c.ipa, manner: c.manner, official: c.official, example: c.example, candidates: candFor };
+        });
+        n.isOverride = !reset;
+        PICK = {};
+        if (CUR_EL) {
+          var ph = n.tokens.map(function (t) { return '<span class="ph" title="' + esc(t.manner || '') + '">' + esc(t.symbol) + '</span>'; }).join('');
+          var phons = CUR_EL.querySelector('.phons');
+          if (phons) phons.innerHTML = ph || '<span class="ph">—</span>';
+          if (n.isOverride) CUR_EL.classList.add('ov'); else CUR_EL.classList.remove('ov');
         }
-        n.tokens = newToks;
-        n._picked = {};
-        n.isOverride = reset ? false : true;
-        if (curNoteEl) refreshCard(curNoteEl, n);
-        if (curNoteEl && currentNote === n) showPop(curNoteEl);
-        var m2 = $('popMsg');
-        if (m2) { m2.className = 'msg ok'; m2.textContent = reset ? '已恢复默认' : ('已写入：' + after.join(' ')); }
+        renderInspector();
+        $('insMsg').className = 'msg ok';
+        $('insMsg').textContent = reset ? '已恢复默认' : ('已写入：' + after.join(' '));
       } catch (e) {
-        msg.className = 'msg bad';
-        msg.textContent = '写入失败：' + e.message;
+        $('insMsg').className = 'msg bad';
+        $('insMsg').textContent = '写入失败：' + e.message;
+      } finally {
+        $('apply').disabled = false; $('reset').disabled = false;
       }
     }
 
@@ -260,52 +222,48 @@
         var el = document.createElement('div');
         el.className = 'note' + (n.isOverride ? ' ov' : '');
         el._data = n;
-        n._picked = {};
         var ph = (n.tokens || []).map(function (t) { return '<span class="ph" title="' + esc(t.manner || '') + '">' + esc(t.symbol) + '</span>'; }).join('');
         el.innerHTML = (n.isOverride ? '<i class="dotov" title="override"></i>' : '') +
           '<div class="phons">' + (ph || '<span class="ph">—</span>') + '</div>' +
           '<div class="word">' + esc(n.lyric || '·') + '</div>' +
           '<div class="sub">' + esc(n.language || '') + ' · ' + n.pitch + '</div>';
-        el.addEventListener('mouseenter', function () { showPop(el); });
+        el.addEventListener('click', function () { showInspector(n, el); });
         grid.appendChild(el);
       });
       var sc = rep.scope || {};
       $('scope').textContent = '片段：' + (rep.clip || '—') + ' · ' + (sc.which || '') +
         ' · 列出 ' + (rep.count || 0) + ' 个音符' + (sc.clipNoteCount ? '（片段共 ' + sc.clipNoteCount + '）' : '');
-      $('hint').textContent = rep.note || '';
+      var first = grid.querySelector('.note');
+      if (first) showInspector(first._data, first);
+      else { $('insBody').innerHTML = '<div class="empty">' + esc(rep.note || '没有可读的音符') + '</div>'; }
     }
 
     async function boot() {
       $('stat').textContent = '读取中…';
       $('dot').className = 'dot';
-      hidePop();
+      CUR = null; CUR_EL = null; PICK = {};
+      $('apply').disabled = true; $('reset').disabled = true;
+      $('insHead').textContent = '检查器';
+      $('insBody').innerHTML = '<div class="empty">读取中…</div>';
       try {
         var d = await run('phoneme.view', {});
         var rep = firstJSON(d);
         if (!d.ok) throw new Error(d.hint || '读取失败');
+        window.__catalog = rep.catalog || {};
         $('dot').className = 'dot on';
         $('stat').textContent = (rep.count || 0) + ' 个音符';
-        window.__catalog = rep.catalog || {};
         render(rep);
       } catch (e) {
         $('stat').textContent = /bridge not reachable|not running|exit 3/i.test(String(e.message))
           ? 'ACE 没开（或桥没起来）—— 先打开 ACE Studio，再点「刷新」'
           : ('读取失败：' + e.message);
+        $('insBody').innerHTML = '<div class="empty">' + esc($('stat').textContent) + '</div>';
       }
     }
 
-    /* 关闭只发生在「点面板与菜单之外」或 Esc —— 不随鼠标离开、不随滚动 */
-    document.addEventListener('pointerdown', function (ev) {
-      if ($('menu').contains(ev.target)) return;
-      if ($('pop').contains(ev.target)) return;
-      if (ev.target && ev.target.closest && ev.target.closest('.note')) return;
-      hidePop();
-    }, true);
-    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') hidePop(); });
-    window.addEventListener('resize', function () {
-      if (curNoteEl && $('pop').style.display === 'block') placePop(curNoteEl);
-    });
     $('refresh').addEventListener('click', boot);
+    $('apply').addEventListener('click', function () { apply(false); });
+    $('reset').addEventListener('click', function () { apply(true); });
     boot();
   </script>
 </body>
