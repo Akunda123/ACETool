@@ -94,6 +94,7 @@
     var PICK = {};       // 待提交：idx → symbol
     var MSG = '';
     var hideTimer = null;
+    var touched = false;   // 在面板内部操作过 ⇒ 不再自动关
 
     async function run(toolId, values) {
       var res = await fetch('/api/run', {
@@ -123,6 +124,7 @@
     }
 
     function hidePanel() {
+      touched = false;
       clearTimeout(hideTimer);
       $('panel').style.display = 'none';
       CUR = null; PICK = {}; MSG = '';
@@ -135,7 +137,7 @@
     function scheduleHide() {
       clearTimeout(hideTimer);
       hideTimer = setTimeout(function () {
-        if (dirty()) return;                       // 改过还没应用：别关
+        if (touched || dirty()) return;            // 面板里操作过（或还有未应用的修改）：不关
         var el = document.elementFromPoint(lastX, lastY);
         if (el && el.closest && (el.closest('#panel') || el.closest('.chip'))) return;
         hidePanel();
@@ -156,6 +158,7 @@
     }
 
     function openPanel(n, chip) {
+      touched = false;
       cancelHide();
       CUR = n; PICK = {}; MSG = '';
       [].slice.call(document.querySelectorAll('.chip.active')).forEach(function (c) { c.classList.remove('active'); });
@@ -255,6 +258,7 @@
     }
 
 
+    $('panel').addEventListener('pointerdown', function () { touched = true; cancelHide(); });
     $('panel').addEventListener('mouseenter', cancelHide);
     $('panel').addEventListener('mouseleave', scheduleHide);
     document.addEventListener('pointermove', function (ev) {
